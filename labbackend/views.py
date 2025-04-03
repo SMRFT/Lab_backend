@@ -25,7 +25,9 @@ from .serializers import RegisterSerializer
 
 from .serializers import RegisterSerializer
 
-@api_view(['GET', 'POST'])
+
+from .serializers import RegisterSerializer
+@api_view(['GET', 'POST', 'PUT'])
 @csrf_exempt
 def registration(request):
     if request.method == 'POST':
@@ -40,6 +42,57 @@ def registration(request):
             return Response({"error": "User with this name and role already exists"}, status=status.HTTP_400_BAD_REQUEST)
         Register.objects.create(name=name, role=role, password=password)
         return Response({"message": "Registration successful!"}, status=status.HTTP_201_CREATED)
+    
+    elif request.method == 'PUT':
+        name = request.data.get('name')
+        role = request.data.get('role')
+        old_password = request.data.get('oldPassword')
+        new_password = request.data.get('password')
+        confirm_password = request.data.get('confirmPassword')
+        
+        if new_password != confirm_password:
+            return Response({"error": "New passwords do not match"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            password = quote_plus('Smrft@2024')
+            client = MongoClient(
+                f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
+                tls=True,
+                tlsCAFile=certifi.where()
+            )
+            db = client.Lab
+            collection = db['labbackend_register']
+            
+            # Find the user
+            user = collection.find_one({"name": name, "role": role})
+
+            if not user:
+                return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+            
+            # Verify old password
+            if user.get('password') != old_password:
+                return Response({"error": "Incorrect current password"}, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Update password
+            result = collection.update_one(
+                {"name": name, "role": role},
+                {"$set": {"password": new_password}}
+            )
+
+            if result.matched_count == 0:
+                return Response({"error": "No matching user found"}, status=status.HTTP_404_NOT_FOUND)
+
+            if result.modified_count == 1:
+                return Response({"message": "Password changed successfully"}, status=status.HTTP_200_OK)
+            else:
+                return Response({"error": "Password update failed"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        except Exception as e:
+            return Response({"error": f"Database error: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        finally:
+            if 'client' in locals():
+                client.close()
+
     elif request.method == 'GET':
         # Handle fetching users with the role "Sales Person"
         sales_persons = Register.objects.filter(role='Sales Person')
@@ -415,12 +468,28 @@ def patient_report(request):
     if not start_date_str or not end_date_str:
         return JsonResponse({"error": "Start date and end date are required"}, status=400)
     try:
-        start_date = datetime.strptime(start_date_str, "%Y-%m-%d").date()
-        end_date = datetime.strptime(end_date_str, "%Y-%m-%d").date() + timedelta(days=1)  # Include full end date
+        start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
+        end_date = datetime.strptime(end_date_str, "%Y-%m-%d") + timedelta(days=1)  # Include full end date
     except ValueError:
         return JsonResponse({"error": "Invalid date format. Use YYYY-MM-DD."}, status=400)
-    patients = Patient.objects.filter(date__gte=start_date, date__lt=end_date)
-    if not patients.exists():
+    # MongoDB Connection Setup
+    password = quote_plus('Smrft@2024')
+    client = MongoClient(
+        f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
+        tls=True,
+        tlsCAFile=certifi.where()
+    )
+    db = client.Lab
+    patients_collection = db["labbackend_patient"]  # MongoDB collection
+    # Query MongoDB directly
+    patients = patients_collection.find({
+        "date": {"$gte": start_date, "$lt": end_date}
+    })
+    # Check if there are any patients
+    patient_count = patients_collection.count_documents({
+        "date": {"$gte": start_date, "$lt": end_date}
+    })
+    if patient_count == 0:
         return JsonResponse({'message': "No data available for the selected date range.", 'report': []})
     # Dictionary to group data by date
     report_by_date = defaultdict(lambda: {
@@ -430,69 +499,77 @@ def patient_report(request):
         'net_amount': 0,
         'pending_amount': 0,
         'total_collection': 0,
-        'credit_payment_received': 0,  # New field to track credit payments received
+        'credit_payment_received': 0,  # Track credit payments received
         'payment_totals': {'Cash': 0, 'UPI': 0, 'Neft': 0, 'Cheque': 0, 'Credit': 0, 'PartialPayment': 0}
     })
     # Process each patient's data
     for patient in patients:
-        date_key = patient.date.strftime("%Y-%m-%d")  # Convert date to string for JSON response
-        gross_amount = convert_to_float(patient.totalAmount)
-        discount = convert_to_float(patient.discount)
-        # Process PartialPayment
-        partial_payment = patient.PartialPayment
-        if isinstance(partial_payment, str) and partial_payment.strip():
-            try:
-                partial_payment = json.loads(partial_payment)
-            except json.JSONDecodeError:
-                partial_payment = {}
-        elif not isinstance(partial_payment, dict):
-            partial_payment = {}
+        date_key = patient['date'].strftime("%Y-%m-%d")  # Convert date to string for JSON response
+        gross_amount = convert_to_float(patient.get('totalAmount', 0))
+        discount = convert_to_float(patient.get('discount', 0))
+        # Process PartialPayment - Handle it as a possible JSON string
+        partial_payment = patient.get('PartialPayment', '')
+        partial_payment_dict = {}
+        if isinstance(partial_payment, str):
+            # Remove any extra quotes if it's a JSON string within a string (like "\"\"")
+            partial_payment = partial_payment.strip('"\'')
+            if partial_payment:
+                try:
+                    partial_payment_dict = json.loads(partial_payment)
+                except json.JSONDecodeError:
+                    partial_payment_dict = {}
+        elif isinstance(partial_payment, dict):
+            partial_payment_dict = partial_payment
         # Get due amount from PartialPayment
-        due_amount = convert_to_float(partial_payment.get('credit', 0))
-        paid_pending_amount = convert_to_float(partial_payment.get('pending_amount', 0))
+        due_amount = 0
+        if isinstance(partial_payment_dict, dict):
+            due_amount = convert_to_float(partial_payment_dict.get('credit', 0))
         # Process credit_details - this is for payments against previous credits
-        credit_details = patient.credit_details
+        credit_details = patient.get('credit_details', '')
+        credit_details_list = []
         if isinstance(credit_details, str) and credit_details.strip():
             try:
-                credit_details = json.loads(credit_details)
-                # Process each credit payment entry
-                if isinstance(credit_details, list):
-                    for payment in credit_details:
-                        payment_date_str = payment.get('paid_date')
-                        if payment_date_str:
-                            try:
-                                payment_date = datetime.strptime(payment_date_str, "%Y-%m-%d").date()
-                                # If payment date falls within report range, add to the appropriate date
-                                if start_date <= payment_date < end_date:
-                                    payment_date_key = payment_date.strftime("%Y-%m-%d")
-                                    amount_paid = convert_to_float(payment.get('amount_paid', 0))
-                                    payment_method = payment.get('payment_method')
-                                    # Add to credit payment received for that day
-                                    report_by_date[payment_date_key]['credit_payment_received'] += amount_paid
-                                    # Add to payment method totals
-                                    if payment_method in report_by_date[payment_date_key]['payment_totals']:
-                                        report_by_date[payment_date_key]['payment_totals'][payment_method] += amount_paid
-                            except ValueError:
-                                # Invalid date format, skip this payment
-                                continue
+                credit_details_list = json.loads(credit_details)
             except json.JSONDecodeError:
-                credit_details = []
-        # Get credit amount
-        credit_amount = convert_to_float(patient.credit_amount)
+                credit_details_list = []
+        elif isinstance(credit_details, list):
+            credit_details_list = credit_details
+        # Process each credit payment entry
+        if isinstance(credit_details_list, list):
+            for payment in credit_details_list:
+                payment_date_str = payment.get('paid_date')
+                if payment_date_str:
+                    try:
+                        payment_date = datetime.strptime(payment_date_str, "%Y-%m-%d").date()
+                        # If payment date falls within report range, add to the appropriate date
+                        if start_date.date() <= payment_date < end_date.date():
+                            payment_date_key = payment_date.strftime("%Y-%m-%d")
+                            amount_paid = convert_to_float(payment.get('amount_paid', 0))
+                            payment_method = payment.get('payment_method')
+                            # Add to credit payment received for that day
+                            report_by_date[payment_date_key]['credit_payment_received'] += amount_paid
+                            # Add to payment method totals
+                            if payment_method in report_by_date[payment_date_key]['payment_totals']:
+                                report_by_date[payment_date_key]['payment_totals'][payment_method] += amount_paid
+                    except ValueError:
+                        # Invalid date format, skip this payment
+                        continue
         # Update values for the date
         report_by_date[date_key]['gross_amount'] += gross_amount
         report_by_date[date_key]['discount'] += discount
         report_by_date[date_key]['due_amount'] += due_amount
-        report_by_date[date_key]['pending_amount'] += credit_amount  # Use credit_amount for pending
         # Process payment method totals from main payment
-        payment_method = patient.payment_method
+        payment_method = patient.get('payment_method', '')
+        payment_method_dict = {}
         if isinstance(payment_method, str) and payment_method.strip():
             try:
-                payment_method = json.loads(payment_method)
+                payment_method_dict = json.loads(payment_method)
             except json.JSONDecodeError:
-                payment_method = {}
-        if isinstance(payment_method, dict):
-            method = payment_method.get('paymentmethod')
+                payment_method_dict = {}
+        elif isinstance(payment_method, dict):
+            payment_method_dict = payment_method
+        if isinstance(payment_method_dict, dict):
+            method = payment_method_dict.get('paymentmethod')
             if method in report_by_date[date_key]['payment_totals']:
                 # Only add to payment totals if it's not a credit transaction
                 if method != 'Credit':
@@ -512,12 +589,12 @@ def patient_report(request):
             'gross_amount': round(data['gross_amount'], 2),
             'discount': round(data['discount'], 2),
             'due_amount': round(data['due_amount'], 2),
-            'pending_amount': round(data['pending_amount'], 2),
             'credit_payment_received': round(data['credit_payment_received'], 2),
             'net_amount': round(net_amount, 2),
             'total_collection': round(total_collection, 2),
             'payment_totals': {key: round(value, 2) for key, value in data['payment_totals'].items()},
         })
+    client.close()  # Close MongoDB connection
     return Response({'report': report_list})
 
 
