@@ -385,10 +385,46 @@ def get_patients_by_date(request):
 
             # Adjust filter based on field type
             patients = Patient.objects.filter(date__gte=start_date_parsed, date__lte=end_date_parsed)
-
-            # Convert queryset to JSON
-            patient_data = [model_to_dict(patient) for patient in patients]
+            
+            patient_data = []
+            
+            for patient in patients:
+                patient_dict = model_to_dict(patient)
+                
+                # Handle testname which could be a string or already a list
+                tests = patient.testname
+                
+                # If tests is a string, parse it as JSON
+                if isinstance(tests, str):
+                    try:
+                        tests = json.loads(tests)
+                    except json.JSONDecodeError:
+                        # Skip patients with invalid JSON in testname
+                        continue
+                
+                # Filter out tests that are refunded or cancelled
+                valid_tests = []
+                for test in tests:
+                    # Check if refund or cancellation keys exist and are True
+                    if not test.get('refund', False) and not test.get('cancellation', False):
+                        valid_tests.append(test)
+                
+                # If no valid tests remain after filtering, skip this patient entirely
+                if not valid_tests:
+                    continue
+                
+                # Replace the testname with filtered valid tests
+                patient_dict['testname'] = valid_tests
+                
+                # Recalculate total amount based on valid tests only
+                total_amount = sum(float(test.get('amount', 0)) for test in valid_tests)
+                patient_dict['totalAmount'] = str(total_amount)
+                
+                patient_data.append(patient_dict)
+            
+            # Return the filtered patient data
             return JsonResponse({'data': patient_data}, safe=False)
+            
         except ValueError:
             return JsonResponse({'error': 'Invalid date format. Use YYYY-MM-DD.'}, status=400)
 
@@ -1734,6 +1770,7 @@ def patient_overview(request):
 
    
 from .models import Patient  # Adjust the import based on your project structure
+from .models import Patient  # Adjust the import based on your project structure
 def get_barcode_by_date(request):
     date = request.GET.get('date')  # Expecting 'YYYY-MM-DD'
     if date:
@@ -1745,13 +1782,48 @@ def get_barcode_by_date(request):
             # Query patients with a range filter
             patients = Patient.objects.filter(date__gte=start_of_day, date__lte=end_of_day)
            
-            # Serialize the data
-            patient_data = [model_to_dict(patient) for patient in patients]
+            # Process each patient to filter out refunded or cancelled tests
+            patient_data = []
+            for patient in patients:
+                patient_dict = model_to_dict(patient)
+                
+                # Handle testname which could be a string or already a list
+                tests = patient.testname
+                
+                # If tests is a string, parse it as JSON
+                if isinstance(tests, str):
+                    try:
+                        tests = json.loads(tests)
+                    except json.JSONDecodeError:
+                        # Skip patients with invalid JSON in testname
+                        continue
+                
+                # Filter out tests that are refunded or cancelled
+                valid_tests = []
+                for test in tests:
+                    # Check if refund or cancellation keys exist and are True
+                    if not test.get('refund', False) and not test.get('cancellation', False):
+                        valid_tests.append(test)
+                
+                # If no valid tests remain after filtering, skip this patient entirely
+                if not valid_tests:
+                    continue
+                
+                # Replace the testname with filtered valid tests
+                patient_dict['testname'] = valid_tests
+                
+                # Recalculate total amount based on valid tests only
+                total_amount = sum(float(test.get('amount', 0)) for test in valid_tests)
+                patient_dict['totalAmount'] = str(total_amount)
+                
+                patient_data.append(patient_dict)
+            
+            # Return the filtered patient data
             return JsonResponse({'data': patient_data}, safe=False)
+            
         except ValueError:
             return JsonResponse({'error': 'Invalid date format. Use YYYY-MM-DD.'}, status=400)
     return JsonResponse({'error': 'Date parameter is required.'}, status=400)
-
 from django.http import JsonResponse
 from .models import BarcodeTestDetails
 def check_barcode(request):
@@ -2769,7 +2841,7 @@ def get_invoices(request):
 
 @csrf_exempt
 def update_invoice(request, invoice_number):
-    """Update the invoice with total, paid, and pending amounts."""
+    """Update the invoice with total, paid, and pending amounts, payment date and method."""
     collection = get_mongo_collection()
 
     if request.method == "PUT":
@@ -2777,22 +2849,22 @@ def update_invoice(request, invoice_number):
             data = json.loads(request.body)
             new_credit_amount = data.get("totalCreditAmount")
             paid_amount = data.get("paidAmount", "0.00")
+            pending_amount = data.get("pendingAmount", "0.00")
+            payment_details = data.get("paymentDetails", "{}")
+            payment_history = data.get("paymentHistory", "[]")
 
             if new_credit_amount is None:
                 return JsonResponse({"error": "Missing totalCreditAmount field"}, status=400)
-
-            # Calculate pending amount
-            total = float(new_credit_amount)
-            paid = float(paid_amount)
-            pending = max(0, total - paid)
             
-            # Update the invoice with all three values
+            # Update the invoice with all values
             result = collection.update_one(
                 {"invoiceNumber": invoice_number},
                 {"$set": {
                     "totalCreditAmount": new_credit_amount,
                     "paidAmount": paid_amount,
-                    "pendingAmount": str(pending)
+                    "pendingAmount": pending_amount,
+                    "paymentDetails": payment_details,
+                    "paymentHistory": payment_history
                 }},
             )
 
@@ -2801,18 +2873,16 @@ def update_invoice(request, invoice_number):
 
             return JsonResponse({
                 "message": "Invoice updated successfully",
-                "pendingAmount": str(pending)
+                "pendingAmount": pending_amount,
+                "paidAmount": paid_amount,
+                "paymentDetails": payment_details,
+                "paymentHistory": payment_history
             }, status=200)
 
         except json.JSONDecodeError:
             return JsonResponse({"error": "Invalid JSON"}, status=400)
         except Exception as e:
-            return JsonResponse({"error": str(e)}, status=500)
-
-
-
-
-        
+            return JsonResponse({"error": str(e)}, status=500) 
 @csrf_exempt
 def delete_invoice(request, invoice_id):
     """Delete an invoice based on invoice_id"""
@@ -2897,7 +2967,37 @@ def getsalesmapping(request):
         serializer = SalesVisitLogSerializer(data, many=True)
         return Response(serializer.data)
     
-
+from rest_framework.response import Response
+from django.http import JsonResponse, HttpResponse
+from rest_framework.views import APIView
+from django.views.decorators.http import require_http_methods
+from django.views.decorators.csrf import csrf_exempt
+from rest_framework.decorators import api_view
+from rest_framework import status,viewsets
+from datetime import datetime, timedelta
+from django.db.models import Max
+from urllib.parse import quote_plus
+from pymongo import MongoClient
+from django.views.decorators.http import require_GET
+from django.forms.models import model_to_dict
+from django.shortcuts import get_object_or_404
+from django.utils.dateparse import parse_date
+from django.utils.timezone import make_aware
+from django.db.models import Q
+from rest_framework.decorators import action
+from django.core.mail import send_mail
+import traceback
+import logging
+from django.core.mail import EmailMessage
+from django.conf import settings  # To access the settings for DEFAULT_FROM_EMAIL
+import json
+import random
+import certifi
+import pytz
+import gridfs
+import os
+from gridfs import GridFS
+from pymongo import MongoClient
 from django.shortcuts import get_list_or_404
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -2976,7 +3076,24 @@ def search_refund(request):
                 date__gte=start_of_day,
                 date__lt=end_of_day  # Use `<` to exclude the next day's midnight
             )
+            
             result = list(patients.values())
+            
+            # Process each patient record to filter out tests with refund=true
+            for patient in result:
+                if 'testname' in patient and isinstance(patient['testname'], list):
+                    # Check if all tests have refund=true
+                    all_refunded = all(test.get('refund', False) for test in patient['testname'])
+                    
+                    if all_refunded:
+                        # If all tests are refunded, replace the tests with a message
+                        patient['all_refunded'] = True
+                        patient['testname'] = []
+                    else:
+                        # Filter out tests where refund=true
+                        patient['all_refunded'] = False
+                        patient['testname'] = [test for test in patient['testname'] if not test.get('refund', False)]
+            
             return JsonResponse({"patients": result}, safe=False)
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=500)
@@ -3078,34 +3195,40 @@ def verify_and_process_refund(request):
             if not patient_record:
                 return JsonResponse({"error": "Patient not found."}, status=404)
 
-            # Parse test names
+            # Get current date and time in ISO format
+            current_datetime = datetime.now().isoformat()
+            
+            # Parse test names and update refund status and refunded_date
             test_list = json.loads(patient_record.get("testname", "[]"))
-            remaining_tests = [test for test in test_list if test["testname"] not in selected_tests]
-            refund_amount = sum(test["amount"] for test in test_list if test["testname"] in selected_tests)
-
-            # Update totalAmount and credit_amount if applicable
-            updated_total = int(patient_record["totalAmount"]) - refund_amount
-            updated_credit_amount = int(patient_record["credit_amount"]) - refund_amount if "credit_amount" in patient_record else 0
-
-            # Update the database
+            refunded_tests = []
+            
+            for test in test_list:
+                if test["testname"] in selected_tests:
+                    test["refund"] = True
+                    test["refunded_date"] = current_datetime  # Add the refunded date
+                    refunded_tests.append(test["testname"])
+            
+            # Update only the test list with refund flags and dates
             update_data = {
-                "testname": json.dumps(remaining_tests),
-                "totalAmount": str(updated_total),
+                "testname": json.dumps(test_list)
             }
-            if "payment_method" in patient_record and "Credit" in patient_record["payment_method"]:
-                update_data["credit_amount"] = str(updated_credit_amount)
 
             patients_collection.update_one({"patient_id": patient_id}, {"$set": update_data})
 
             # Remove OTP after successful verification
             del otp_storage_refund[email]
 
-            return JsonResponse({"message": "Refund processed successfully", "refund_amount": refund_amount}, status=200)
+            return JsonResponse({
+                "message": f"Refund status updated successfully for {len(refunded_tests)} tests", 
+                "refunded_tests": refunded_tests,
+                "refunded_date": current_datetime
+            }, status=200)
 
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=500)
 
     return JsonResponse({"error": "Invalid request method."}, status=405)
+
 
 @csrf_exempt
 def search_cancellation(request):
@@ -3130,12 +3253,27 @@ def search_cancellation(request):
             # Convert queryset to list of dictionaries
             result = []
             for patient in patients:
+                # Get the testname data (handle both string and list formats)
+                test_data = json.loads(patient.testname) if isinstance(patient.testname, str) else patient.testname
+                
+                # Check if all tests have cancellation=true
+                all_cancelled = all(test.get('cancellation', False) for test in test_data)
+                
+                # Create patient dictionary with appropriate data
                 patient_dict = {
                     'patient_id': patient.patient_id,
                     'patientname': patient.patientname,
                     'date': patient.date,
-                    'testname': json.loads(patient.testname) if isinstance(patient.testname, str) else patient.testname
+                    'all_cancelled': all_cancelled,
                 }
+                
+                if all_cancelled:
+                    # If all tests are cancelled, just keep the flag and empty test list
+                    patient_dict['testname'] = []
+                else:
+                    # Filter out tests where cancellation=true
+                    patient_dict['testname'] = [test for test in test_data if not test.get('cancellation', False)]
+                
                 result.append(patient_dict)
             
             return JsonResponse({"patients": result}, safe=False)
@@ -3241,6 +3379,9 @@ def verify_and_process_cancellation(request):
 
             # Get today's date in the correct format
             today_date = datetime.now().strftime("%Y-%m-%d")
+            
+            # Get current date and time in ISO format for cancelled_date
+            current_datetime = datetime.now().isoformat()
 
             # Convert MongoDB date to a comparable format
             record_date = patient_record.get("date")
@@ -3257,26 +3398,32 @@ def verify_and_process_cancellation(request):
 
             # Parse test names from the record
             test_list = json.loads(patient_record.get("testname", "[]"))
-            same_day_tests = [test for test in test_list if test["testname"] in selected_tests]
-
-            if not same_day_tests:
+            refund_amount = 0
+            cancelled_tests = []
+            
+            # Update the cancellation status for selected tests and add cancelled_date
+            for test in test_list:
+                if test["testname"] in selected_tests:
+                    test["cancellation"] = True
+                    test["cancelled_date"] = current_datetime  # Add the cancelled date
+                    refund_amount += test["amount"]
+                    cancelled_tests.append(test["testname"])
+            
+            # If no tests were found for cancellation
+            if refund_amount == 0:
                 return JsonResponse({"error": "No matching tests found for cancellation."}, status=400)
-
-            # Calculate refund amount and filter remaining tests
-            refund_amount = sum(test["amount"] for test in same_day_tests)
-            remaining_tests = [test for test in test_list if test["testname"] not in selected_tests]
-
+                
             # Update totalAmount and credit_amount if applicable
             updated_total = int(patient_record["totalAmount"]) - refund_amount
-            updated_credit_amount = int(patient_record["credit_amount"]) - refund_amount if "credit_amount" in patient_record else 0
+            updated_credit_amount = int(patient_record.get("credit_amount", "0")) - refund_amount if "credit_amount" in patient_record else 0
 
             # Prepare update data
             update_data = {
-                "testname": json.dumps(remaining_tests),
+                "testname": json.dumps(test_list),
                 "totalAmount": str(updated_total),
             }
             if "payment_method" in patient_record and "Credit" in patient_record["payment_method"]:
-                update_data["credit_amount"] = str(updated_credit_amount)
+                update_data["credit_amount"] = str(max(0, updated_credit_amount))
 
             # Update the database
             patients_collection.update_one({"patient_id": patient_id}, {"$set": update_data})
@@ -3284,7 +3431,12 @@ def verify_and_process_cancellation(request):
             # Remove OTP after successful verification
             del otp_storage_cancellation[email]
 
-            return JsonResponse({"message": "Cancellation processed successfully", "refund_amount": refund_amount}, status=200)
+            return JsonResponse({
+                "message": "Cancellation processed successfully", 
+                "refund_amount": refund_amount,
+                "cancelled_tests": cancelled_tests,
+                "cancelled_date": current_datetime
+            }, status=200)
 
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=500)
@@ -3613,3 +3765,130 @@ class ClinicalNameViewSet(viewsets.ModelViewSet):
             )
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def logs_api(request):
+    """Combined API endpoint for both refund and cancellation logs"""
+    try:
+        password = quote_plus('Smrft@2024')
+        client = MongoClient(
+                f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
+                tls=True,
+                tlsCAFile=certifi.where()
+            )
+        db = client.Lab
+        patient_collection = db['labbackend_patient']
+        
+        # Get query parameters
+        log_type = request.GET.get('type', 'refund')  # Default to refund if not specified
+        start_date = request.GET.get('start_date')
+        end_date = request.GET.get('end_date')
+        
+        # Base query - default to current date if no dates provided
+        query = {}
+        
+        # Apply date filters
+        if start_date or end_date:
+            query['date'] = {}
+            if start_date:
+                start_date = datetime.strptime(start_date, '%Y-%m-%d')
+                query['date']['$gte'] = start_date
+            if end_date:
+                end_date = datetime.strptime(end_date, '%Y-%m-%d')
+                # Add 1 day to end_date to include the full day
+                end_date = end_date.replace(hour=23, minute=59, second=59)
+                query['date']['$lte'] = end_date
+        else:
+            # Default to current date if no dates provided
+            today = datetime.now()
+            today_start = today.replace(hour=0, minute=0, second=0, microsecond=0)
+            today_end = today.replace(hour=23, minute=59, second=59, microsecond=999999)
+            query['date'] = {'$gte': today_start, '$lte': today_end}
+        
+        # Additional optimization: Only fetch patients with refunded or cancelled tests
+        if log_type == 'refund':
+            # Add an additional filter to only fetch patients with refunded tests
+            # Assuming testname is stored as a string that we can do basic text matching on
+            query['testname'] = {'$regex': '"refund"\\s*:\\s*true', '$options': 'i'}
+        elif log_type == 'cancellation':
+            # Similar for cancellation
+            query['testname'] = {'$regex': '"cancellation"\\s*:\\s*true', '$options': 'i'}
+        
+        patients = list(patient_collection.find(query))
+        results = []
+        
+        if log_type == 'refund':
+            # Process refund logs
+            for patient in patients:
+                try:
+                    # Parse the testname JSON string
+                    tests = json.loads(patient.get('testname', '[]'))
+                    # Filter tests that have refund=true
+                    refundable_tests = [test for test in tests if test.get('refund') is True]
+                    
+                    # If there are refundable tests, add to results
+                    if refundable_tests:
+                        # Calculate total refund amount for this patient
+                        total_refund_amount = sum(float(test.get('amount', 0)) for test in refundable_tests)
+                        
+                        # List all refunded test names and their individual amounts
+                        refunded_test_details = [f"{test.get('testname', 'Unknown Test')} (₹{float(test.get('amount', 0)):.2f})" 
+                                               for test in refundable_tests]
+                        
+                        results.append({
+                            'id': str(patient.get('_id')),
+                            'patient_id': patient.get('patient_id'),
+                            'patientname': patient.get('patientname'),
+                            'bill_no': patient.get('bill_no'),
+                            'date': patient.get('date').isoformat() if isinstance(patient.get('date'), datetime) else str(patient.get('date')),
+                            'testname': ", ".join(refunded_test_details),
+                            'refund_amount': total_refund_amount,
+                            'refunded_tests': refundable_tests,  # Include full test objects for detailed info
+                            'refund_count': len(refundable_tests),  # Add count of refunded tests
+                            'reason': patient.get('refund_reason', 'Test Refunded')  # Try to get specific reason if available
+                        })
+                except (json.JSONDecodeError, AttributeError, KeyError) as e:
+                    # Skip if there's an error parsing the testname JSON
+                    print(f"Error processing patient {patient.get('_id')}: {str(e)}")
+                    continue
+        elif log_type == 'cancellation':
+            # Process cancellation logs
+            for patient in patients:
+                try:
+                    # Parse the testname JSON string
+                    tests = json.loads(patient.get('testname', '[]'))
+                    # Filter tests that are cancelled
+                    cancelled_tests = [test for test in tests if test.get('cancellation') is True]
+                    
+                    # If there are cancelled tests, add to results
+                    if cancelled_tests:
+                        # Calculate total cancelled amount
+                        total_cancelled_amount = sum(float(test.get('amount', 0)) for test in cancelled_tests)
+                        
+                        # List all cancelled test names with their individual amounts
+                        cancelled_test_details = [f"{test.get('testname', 'Unknown Test')} (₹{float(test.get('amount', 0)):.2f})" 
+                                               for test in cancelled_tests]
+                        
+                        results.append({
+                            'id': str(patient.get('_id')),
+                            'patient_id': patient.get('patient_id'),
+                            'patientname': patient.get('patientname'),
+                            'bill_no': patient.get('bill_no'),
+                            'date': patient.get('date').isoformat() if isinstance(patient.get('date'), datetime) else str(patient.get('date')),
+                            'testname': ", ".join(cancelled_test_details),
+                            'refund_amount': total_cancelled_amount,
+                            'cancelled_tests': cancelled_tests,  # Include full test objects for detailed info
+                            'cancel_count': len(cancelled_tests),  # Add count of cancelled tests
+                            'reason': patient.get('cancellation_reason', 'Test Cancelled')  # Try to get specific reason if available
+                        })
+                except (json.JSONDecodeError, AttributeError, KeyError) as e:
+                    # Skip if there's an error parsing the testname JSON
+                    print(f"Error processing patient {patient.get('_id')}: {str(e)}")
+                    continue
+        
+        return JsonResponse(results, safe=False)
+    except Exception as e:
+        print(f"Error in logs_api: {str(e)}")
+        return JsonResponse({"error": str(e)}, status=500)

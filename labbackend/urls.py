@@ -96,5 +96,6 @@ urlpatterns = [
     path('generate_otp_cancellation/', views.generate_otp_cancellation, name='generate_otp_cancellation'),
     path('search_cancellation/', views.search_cancellation, name='search_cancellation'),
     path('verify_and_process_cancellation/', views.verify_and_process_cancellation, name='verify_and_process_cancellation'),
+    path('refund_cancellation_logs/', views.logs_api, name='refund_cancellation_logs'),
 
 ]
