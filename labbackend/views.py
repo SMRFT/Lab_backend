@@ -492,22 +492,27 @@ from datetime import datetime, timedelta
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from django.http import JsonResponse
+
 def convert_to_float(value):
     try:
         return float(value)
     except (ValueError, TypeError):
         return 0.0
+
 @api_view(['GET'])
 def patient_report(request):
     start_date_str = request.GET.get('start_date')
     end_date_str = request.GET.get('end_date')
+    
     if not start_date_str or not end_date_str:
         return JsonResponse({"error": "Start date and end date are required"}, status=400)
+    
     try:
         start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
         end_date = datetime.strptime(end_date_str, "%Y-%m-%d") + timedelta(days=1)  # Include full end date
     except ValueError:
         return JsonResponse({"error": "Invalid date format. Use YYYY-MM-DD."}, status=400)
+    
     # MongoDB Connection Setup
     password = quote_plus('Smrft@2024')
     client = MongoClient(
@@ -517,16 +522,11 @@ def patient_report(request):
     )
     db = client.Lab
     patients_collection = db["labbackend_patient"]  # MongoDB collection
-    # Query MongoDB directly
-    patients = patients_collection.find({
-        "date": {"$gte": start_date, "$lt": end_date}
-    })
-    # Check if there are any patients
-    patient_count = patients_collection.count_documents({
-        "date": {"$gte": start_date, "$lt": end_date}
-    })
-    if patient_count == 0:
-        return JsonResponse({'message': "No data available for the selected date range.", 'report': []})
+    
+    # Query MongoDB - We need to find ALL patients that might have refunds during our date range
+    # This means we can't filter by patient.date alone, as refunds might occur on a different day
+    patients = patients_collection.find()
+    
     # Dictionary to group data by date
     report_by_date = defaultdict(lambda: {
         'gross_amount': 0,
@@ -536,33 +536,61 @@ def patient_report(request):
         'pending_amount': 0,
         'total_collection': 0,
         'credit_payment_received': 0,  # Track credit payments received
+        'refund_amount': 0,  # Track refunds processed
         'payment_totals': {'Cash': 0, 'UPI': 0, 'Neft': 0, 'Cheque': 0, 'Credit': 0, 'PartialPayment': 0}
     })
+    
+    # Process each patient's data
     # Process each patient's data
     for patient in patients:
-        date_key = patient['date'].strftime("%Y-%m-%d")  # Convert date to string for JSON response
-        gross_amount = convert_to_float(patient.get('totalAmount', 0))
-        discount = convert_to_float(patient.get('discount', 0))
-        # Process PartialPayment - Handle it as a possible JSON string
-        partial_payment = patient.get('PartialPayment', '')
-        partial_payment_dict = {}
-        if isinstance(partial_payment, str):
-            # Remove any extra quotes if it's a JSON string within a string (like "\"\"")
-            partial_payment = partial_payment.strip('"\'')
-            if partial_payment:
+        patient_date = patient.get('date')
+        if not patient_date:
+            continue
+            
+        # Check if the patient's original transaction date is within our range
+        patient_in_range = start_date <= patient_date < end_date
+        
+        # If patient's transaction date is within range, process regular transaction data
+        if patient_in_range:
+            date_key = patient_date.strftime("%Y-%m-%d")  # Convert date to string for JSON response
+            gross_amount = convert_to_float(patient.get('totalAmount', 0))
+            discount = convert_to_float(patient.get('discount', 0))
+            
+            # CHANGED: Get due_amount from credit_amount instead of PartialPayment
+            due_amount = convert_to_float(patient.get('credit_amount', 0))
+            
+            # Update values for the transaction date
+            report_by_date[date_key]['gross_amount'] += gross_amount
+            report_by_date[date_key]['discount'] += discount
+            report_by_date[date_key]['due_amount'] += due_amount
+            
+            # Process payment method totals from main payment
+            payment_method = patient.get('payment_method', '')
+            payment_method_dict = {}
+            
+            if isinstance(payment_method, str) and payment_method.strip():
                 try:
-                    partial_payment_dict = json.loads(partial_payment)
+                    payment_method_dict = json.loads(payment_method)
                 except json.JSONDecodeError:
-                    partial_payment_dict = {}
-        elif isinstance(partial_payment, dict):
-            partial_payment_dict = partial_payment
-        # Get due amount from PartialPayment
-        due_amount = 0
-        if isinstance(partial_payment_dict, dict):
-            due_amount = convert_to_float(partial_payment_dict.get('credit', 0))
+                    payment_method_dict = {}
+            elif isinstance(payment_method, dict):
+                payment_method_dict = payment_method
+            
+            if isinstance(payment_method_dict, dict):
+                method = payment_method_dict.get('paymentmethod')
+                if method in report_by_date[date_key]['payment_totals']:
+                    # Only add to payment totals if it's not a credit transaction
+                    if method != 'Credit':
+                        report_by_date[date_key]['payment_totals'][method] += gross_amount
+                    else:
+                        # If it's credit, add to the Credit payment method total
+                        report_by_date[date_key]['payment_totals']['Credit'] += gross_amount
+        
         # Process credit_details - this is for payments against previous credits
+        # We process these regardless of patient transaction date to catch any credit payments in our date range
         credit_details = patient.get('credit_details', '')
         credit_details_list = []
+        
         if isinstance(credit_details, str) and credit_details.strip():
             try:
                 credit_details_list = json.loads(credit_details)
@@ -570,6 +598,7 @@ def patient_report(request):
                 credit_details_list = []
         elif isinstance(credit_details, list):
             credit_details_list = credit_details
+            
         # Process each credit payment entry
         if isinstance(credit_details_list, list):
             for payment in credit_details_list:
@@ -590,46 +619,63 @@ def patient_report(request):
                     except ValueError:
                         # Invalid date format, skip this payment
                         continue
-        # Update values for the date
-        report_by_date[date_key]['gross_amount'] += gross_amount
-        report_by_date[date_key]['discount'] += discount
-        report_by_date[date_key]['due_amount'] += due_amount
-        # Process payment method totals from main payment
-        payment_method = patient.get('payment_method', '')
-        payment_method_dict = {}
-        if isinstance(payment_method, str) and payment_method.strip():
+        
+        # Process refunds in testname field
+        # We process these for ALL patients to catch any refunds that occurred during our date range
+        testname_data = patient.get('testname', '')
+        test_list = []
+        
+        if isinstance(testname_data, str) and testname_data.strip():
             try:
-                payment_method_dict = json.loads(payment_method)
+                test_list = json.loads(testname_data)
             except json.JSONDecodeError:
-                payment_method_dict = {}
-        elif isinstance(payment_method, dict):
-            payment_method_dict = payment_method
-        if isinstance(payment_method_dict, dict):
-            method = payment_method_dict.get('paymentmethod')
-            if method in report_by_date[date_key]['payment_totals']:
-                # Only add to payment totals if it's not a credit transaction
-                if method != 'Credit':
-                    report_by_date[date_key]['payment_totals'][method] += gross_amount
-                else:
-                    # If it's credit, add to the Credit payment method total
-                    report_by_date[date_key]['payment_totals']['Credit'] += gross_amount
+                test_list = []
+        elif isinstance(testname_data, list):
+            test_list = testname_data
+            
+        # Process each test for refunds
+        if isinstance(test_list, list):
+            for test in test_list:
+                if isinstance(test, dict) and test.get('refund') is True:
+                    refunded_date_str = test.get('refunded_date')
+                    if refunded_date_str:
+                        try:
+                            # Parse the refund date - handle both date and datetime formats
+                            if 'T' in refunded_date_str:  # ISO format with time
+                                refund_date = datetime.fromisoformat(refunded_date_str).date()
+                            else:  # Just date format
+                                refund_date = datetime.strptime(refunded_date_str, "%Y-%m-%d").date()
+                                
+                            # If refund date falls within report range, add to the appropriate date
+                            if start_date.date() <= refund_date < end_date.date():
+                                refund_date_key = refund_date.strftime("%Y-%m-%d")
+                                test_amount = convert_to_float(test.get('amount', 0))
+                                # Add to refund amount for that day
+                                report_by_date[refund_date_key]['refund_amount'] += test_amount
+                        except (ValueError, TypeError):
+                            # Invalid date format, skip this refund
+                            continue
+    
     # Convert to list format
     report_list = []
     for date, data in sorted(report_by_date.items()):
         # Calculate net amount (gross - discount - due)
         net_amount = data['gross_amount'] - (data['discount'] + data['due_amount'])
-        # Total collection includes direct payments plus credit payments received
-        total_collection = net_amount + data['credit_payment_received']
+        # Total collection includes direct payments plus credit payments received minus refunds
+        total_collection = net_amount + data['credit_payment_received'] - data['refund_amount']
+        
         report_list.append({
             'date': date,
             'gross_amount': round(data['gross_amount'], 2),
             'discount': round(data['discount'], 2),
             'due_amount': round(data['due_amount'], 2),
             'credit_payment_received': round(data['credit_payment_received'], 2),
+            'refund_amount': round(data['refund_amount'], 2),  # Add refund amount to response
             'net_amount': round(net_amount, 2),
-            'total_collection': round(total_collection, 2),
+            'total_collection': round(total_collection, 2),  # Adjusted for refunds
             'payment_totals': {key: round(value, 2) for key, value in data['payment_totals'].items()},
         })
+    
     client.close()  # Close MongoDB connection
     return Response({'report': report_list})
 
