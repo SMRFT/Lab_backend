@@ -40,6 +40,7 @@ ALLOWED_HOSTS = [
     "lab.shinovadatabase.in",
 ]
 
+X_FRAME_OPTIONS = 'ALLOWALL'
 
 
 # Application definition

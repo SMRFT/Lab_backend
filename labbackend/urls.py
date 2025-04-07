@@ -97,5 +97,7 @@ urlpatterns = [
     path('search_cancellation/', views.search_cancellation, name='search_cancellation'),
     path('verify_and_process_cancellation/', views.verify_and_process_cancellation, name='verify_and_process_cancellation'),
     path('refund_cancellation_logs/', views.logs_api, name='refund_cancellation_logs'),
+    path('mou-preview/<str:file_id>/',views.preview_mou_file, name='preview_mou_file'),
+    path('dashboard-data/', views.dashboard_data, name='dashboard_data'),
 
 ]

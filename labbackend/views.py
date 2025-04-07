@@ -3648,7 +3648,8 @@ from rest_framework import status
 from gridfs import GridFS
 import certifi
 from rest_framework.decorators import action
-# MongoDB Connection Setup
+
+
 from .models import ClinicalName
 from .serializers import ClinicalNameSerializer
 # MongoDB Connection Setup
@@ -3656,17 +3657,14 @@ def get_mongodb_connection():
     # Properly escape the password
     username = quote_plus("shinovalab")
     password = quote_plus("Smrft@2024")
-
     # MongoDB connection with TLS certificate
     client = MongoClient(
         f"mongodb+srv://{username}:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority",
         tls=True,  # Enable TLS/SSL
         tlsCAFile=certifi.where()  # Use certifi's CA certificate bundle
     )
-
     db = client.Lab  # Database name
     return db, GridFS(db)
-
 # View for handling referrer code generation
 @api_view(['GET'])
 def get_last_referrer_code(request):
@@ -3684,56 +3682,40 @@ def clinical_name(request):
     if request.method == 'POST':
         mou_copy = request.FILES.get('mouCopy')
         data = request.data.copy()
-        
         if not data.get('clinicalname'):
             return Response({"error": "Clinical name is required"}, status=status.HTTP_400_BAD_REQUEST)
-
         if mou_copy:
             del data['mouCopy']
-            
         # Set initial approval status
         data['status'] = 'PENDING_APPROVAL'
         data['first_approved'] = False
         data['final_approved'] = False
-
         serializer = ClinicalNameSerializer(data=data)
-
         if serializer.is_valid():
             try:
                 clinical_name_instance = serializer.save()
-
                 if mou_copy:
                     db, fs = get_mongodb_connection()
                     file_content = mou_copy.read()
                     file_id = fs.put(
-                        file_content, 
+                        file_content,
                         filename=mou_copy.name,
                         content_type=mou_copy.content_type,
-                        clinical_name=clinical_name_instance.clinicalname  
+                        clinical_name=clinical_name_instance.clinicalname
                     )
                     clinical_name_instance.mou_file_id = str(file_id)
                     clinical_name_instance.save()
-
                 return Response(serializer.data, status=status.HTTP_201_CREATED)
-
             except Exception as e:
                 return Response(
-                    {'error': 'Clinical name creation failed', 'details': str(e)}, 
+                    {'error': 'Clinical name creation failed', 'details': str(e)},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
-        
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
     elif request.method == 'GET':
         clinical_names = ClinicalName.objects.filter(status="APPROVED")  # Filter only approved entries
         serializer = ClinicalNameSerializer(clinical_names, many=True)
         return Response(serializer.data)
-@api_view(['GET'])
-def get_last_referrer_code(request):
-    last_clinical = ClinicalName.objects.order_by('-referrerCode').first()
-    if last_clinical:
-        return JsonResponse({'referrerCode': last_clinical.referrerCode})
-    return JsonResponse({'referrerCode': 'SD0000'})
 @api_view(['GET'])
 def download_mou_file(request, clinical_name_id):
     try:
@@ -3748,6 +3730,36 @@ def download_mou_file(request, clinical_name_id):
             )
             response['Content-Disposition'] = f'attachment; filename="{file_record.filename}"'
             return response
+        else:
+            return Response({'error': 'File not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response(
+            {'error': 'File retrieval failed', 'details': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+from bson import ObjectId
+from django.http import HttpResponse
+from rest_framework.response import Response
+from rest_framework.decorators import api_view
+from rest_framework import status
+# Assume get_mongodb_connection is already imported
+
+@api_view(['GET'])
+def preview_mou_file(request, file_id):
+    try:
+        db, fs = get_mongodb_connection()
+        # Convert the file id from string to ObjectId
+        file_record = fs.find_one({'_id': ObjectId(file_id)})
+        if file_record:
+            file_data = file_record.read()
+            response = HttpResponse(
+                file_data,
+                content_type=file_record.content_type
+            )
+            response = HttpResponse(file_data, content_type='application/pdf')
+            response['Content-Disposition'] = f'inline; filename="{file_record.filename}"'
+            return response
+
         else:
             return Response({'error': 'File not found'}, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
@@ -3938,3 +3950,232 @@ def logs_api(request):
     except Exception as e:
         print(f"Error in logs_api: {str(e)}")
         return JsonResponse({"error": str(e)}, status=500)
+    
+
+
+from django.http import JsonResponse
+from django.views.decorators.http import require_GET
+from datetime import datetime, date
+from pymongo import MongoClient
+import certifi
+from urllib.parse import quote_plus
+import json
+@require_GET
+def dashboard_data(request):
+    try:
+        # Get date range and payment method from request parameters
+        from_date = request.GET.get('from_date')
+        to_date = request.GET.get('to_date')
+        payment_method = request.GET.get('payment_method')
+        # Set default to current date if no dates provided
+        if not from_date and not to_date:
+            today = date.today()
+            from_date = today.strftime('%Y-%m-%d')
+            to_date = today.strftime('%Y-%m-%d')
+        # Convert to datetime objects with timezone handling
+        if from_date:
+            from_date = datetime.strptime(from_date, '%Y-%m-%d')
+        if to_date:
+            # Set to end of day for inclusive filtering
+            to_date = datetime.strptime(to_date, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
+        # MongoDB connection
+        password = quote_plus('Smrft@2024')
+        client = MongoClient(
+            f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
+            tls=True,
+            tlsCAFile=certifi.where()
+        )
+        db = client.Lab
+        collection = db.labbackend_patient
+        # Build the query for date filtering
+        query = {}
+        if from_date and to_date:
+            query['date'] = {'$gte': from_date, '$lte': to_date}
+        elif from_date:
+            query['date'] = {'$gte': from_date}
+        elif to_date:
+            query['date'] = {'$lte': to_date}
+        # Add payment method filtering if specified
+        if payment_method:
+            if payment_method == "PartialPayment":
+                query['payment_method'] = {'$regex': 'PartialPayment', '$options': 'i'}
+            else:
+                # Check both direct payment_method and method inside PartialPayment
+                query['$or'] = [
+                    {'payment_method': {'$regex': f'"paymentmethod":"{payment_method}"', '$options': 'i'}},
+                    {'PartialPayment': {'$regex': f'"method":"{payment_method}"', '$options': 'i'}}
+                ]
+        # Execute the query to get filtered patients
+        patients = list(collection.find(query))
+        # Process the data for dashboard
+        total_patients = len(patients)
+        total_revenue = 0
+        # Payment method statistics
+        payment_methods = {
+            'Cash': 0,
+            'Card': 0,
+            'UPI': 0,
+            'Credit': 0,
+            'PartialPayment': 0
+        }
+        # Track revenue by payment method
+        payment_method_amounts = {
+            'Cash': 0,
+            'Card': 0,
+            'UPI': 0,
+            'Credit': 0,
+            'PartialPayment': 0
+        }
+        # Segment statistics
+        segments = {
+            'B2B': 0,
+            'Walk-in': 0,
+            'Home Collection': 0
+        }
+        # B2B client statistics
+        b2b_clients = {}
+        # Credit statistics
+        total_credit = 0
+        credit_paid = 0
+        credit_pending = 0
+        # Safe get method for handling potential string or None values
+        def safe_get(obj, key, default=None):
+            if obj is None:
+                return default
+            if isinstance(obj, dict):
+                return obj.get(key, default)
+            return default
+        # Helper function to parse JSON strings
+        def parse_json(json_str, default=None):
+            if not json_str:
+                return default
+            if isinstance(json_str, dict):
+                return json_str
+            try:
+                return json.loads(json_str)
+            except json.JSONDecodeError:
+                return default
+        # Process each patient
+        for patient in patients:
+            # Process total amount
+            try:
+                total_amount = float(safe_get(patient, 'totalAmount', 0))
+                total_revenue += total_amount
+            except (ValueError, TypeError):
+                pass
+            # Extract payment information
+            payment_info = parse_json(safe_get(patient, 'payment_method'), {'paymentmethod': ''})
+            patient_payment_method = safe_get(payment_info, 'paymentmethod', '')
+            # Handle partial payments
+            if patient_payment_method == 'PartialPayment':
+                partial_payment_info = parse_json(safe_get(patient, 'PartialPayment'), {})
+                actual_method = safe_get(partial_payment_info, 'method', '')
+                # Record the partial payment for display in the dashboard
+                payment_methods['PartialPayment'] += 1
+                if actual_method and actual_method in payment_methods:
+                    try:
+                        # Calculate paid amount and credit amount
+                        total_amount = float(safe_get(patient, 'totalAmount', 0))
+                        credit_amount = float(safe_get(partial_payment_info, 'credit', 0))
+                        paid_amount = total_amount - credit_amount
+                        # Add paid amount to the actual payment method
+                        payment_method_amounts[actual_method] += paid_amount
+                        # Add credit amount to the 'Credit' category
+                        payment_method_amounts['Credit'] += credit_amount
+                        # Record total amount under PartialPayment for accurate statistics
+                        payment_method_amounts['PartialPayment'] += total_amount
+                    except (ValueError, TypeError):
+                        pass
+            elif patient_payment_method and patient_payment_method in payment_methods:
+                payment_methods[patient_payment_method] += 1
+                # Add amount to payment method total
+                try:
+                    payment_amount = float(safe_get(patient, 'totalAmount', 0))
+                    payment_method_amounts[patient_payment_method] += payment_amount
+                except (ValueError, TypeError):
+                    pass
+            # Process segment
+            segment = safe_get(patient, 'segment', '')
+            if segment and segment in segments:
+                segments[segment] += 1
+            # Process B2B clients
+            if segment == 'B2B':
+                b2b_name = safe_get(patient, 'B2B', '')
+                if b2b_name:
+                    b2b_clients[b2b_name] = b2b_clients.get(b2b_name, 0) + 1
+            # Process credit information - from both direct credit and partial payments
+            try:
+                # Direct credit amount
+                credit_amount = float(safe_get(patient, 'credit_amount', 0))
+                # Add credit from partial payments if not already included
+                if not credit_amount and patient_payment_method == 'PartialPayment':
+                    partial_payment_info = parse_json(safe_get(patient, 'PartialPayment'), {})
+                    partial_credit = float(safe_get(partial_payment_info, 'credit', 0))
+                    credit_amount += partial_credit
+                total_credit += credit_amount
+            except (ValueError, TypeError):
+                pass
+            # Process credit details for paid amounts
+            credit_details = parse_json(safe_get(patient, 'credit_details'), [])
+            if isinstance(credit_details, list):
+                for detail in credit_details:
+                    if isinstance(detail, dict):
+                        try:
+                            amount_paid = float(safe_get(detail, 'amount_paid', 0))
+                            credit_paid += amount_paid
+                        except (ValueError, TypeError):
+                            pass
+        credit_pending = total_credit - credit_paid
+        # Prepare payment method statistics for the filtered view
+        filtered_payment_stats = {}
+        if payment_method:
+            filtered_payment_stats = {
+                'count': 0,
+                'amount': 0
+            }
+            # Count patients with the specified payment method (including partial payments)
+            for patient in patients:
+                payment_info = parse_json(safe_get(patient, 'payment_method'), {'paymentmethod': ''})
+                patient_payment_method = safe_get(payment_info, 'paymentmethod', '')
+                is_matching = False
+                if patient_payment_method == payment_method:
+                    is_matching = True
+                elif patient_payment_method == 'PartialPayment':
+                    partial_payment_info = parse_json(safe_get(patient, 'PartialPayment'), {})
+                    actual_method = safe_get(partial_payment_info, 'method', '')
+                    if actual_method == payment_method:
+                        is_matching = True
+                if is_matching:
+                    filtered_payment_stats['count'] += 1
+                    try:
+                        filtered_payment_stats['amount'] += float(safe_get(patient, 'totalAmount', 0))
+                    except (ValueError, TypeError):
+                        pass
+        # Prepare response data
+        response_data = {
+            'total_patients': total_patients,
+            'total_revenue': round(total_revenue, 2),
+            'payment_methods': payment_methods,
+            'payment_method_amounts': {k: round(v, 2) for k, v in payment_method_amounts.items()},
+            'segments': segments,
+            'b2b_clients': dict(sorted(b2b_clients.items(), key=lambda x: x[1], reverse=True)),
+            'credit_statistics': {
+                'total_credit': round(total_credit, 2),
+                'credit_paid': round(credit_paid, 2),
+                'credit_pending': round(credit_pending, 2)
+            }
+        }
+        if payment_method:
+            response_data['filtered_payment_stats'] = {
+                'count': filtered_payment_stats['count'],
+                'amount': round(filtered_payment_stats['amount'], 2)
+            }
+        return JsonResponse({
+            'success': True,
+            'data': response_data
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
