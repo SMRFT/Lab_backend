@@ -68,10 +68,10 @@ pyparsing==3.1.2
 pypdf==4.3.1
 PyPDF2==3.0.1
 pypng==0.20220715.0
-python-bidi==0.6.0
+
 python-dateutil==2.9.0.post0
 python-dotenv==1.0.1
-python3-openid==3.2.0
+
 pytz==2024.1
 PyYAML==6.0.2
 pyzmq==25.1.2
@@ -81,14 +81,10 @@ regex==2023.12.25
 reportlab==4.2.2
 requests==2.31.0
 requests-oauthlib==2.0.0
-rlPyCairo==0.3.0
 schedule==1.2.1
 setuptools==69.2.0
 six==1.16.0
 snowballstemmer==2.2.0
-social-auth-app-django==5.4.0
-social-auth-core==4.5.3
-sortedcontainers==2.4.0
 soupsieve==2.5
 spyder-kernels==2.5.1
 sqlparse==0.2.4
