@@ -52,7 +52,6 @@ nltk==3.8.1
 oauthlib==3.2.2
 oscrypto==1.3.0
 packaging==24.0
-pandas==2.2.2
 parso==0.8.3
 pillow==10.2.0
 platformdirs==4.2.0
