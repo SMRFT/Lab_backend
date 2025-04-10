@@ -218,11 +218,11 @@ class SampleCollectorLocation(models.Model):
     id = models.CharField(primary_key=True,max_length=50)  # Use AutoField for auto-incrementing IDs
     sampleCollector = models.CharField(max_length=255)
     date = models.DateField()
-    latitudeStart = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
-    longitudeStart = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
-    latitudeEnd = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
-    longitudeEnd = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
-    distance_travelled = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True) 
+    latitudeStart = models.CharField(max_length=255)
+    longitudeStart = models.CharField(max_length=255)
+    latitudeEnd = models.CharField(max_length=255)
+    longitudeEnd = models.CharField(max_length=255)
+    distance_travelled = models.CharField(max_length=255)
     
     def __str__(self):
         return f"{self.sampleCollector} - {self.date}"

@@ -89,5 +89,5 @@ urlpatterns = [
     path('verify_and_process_cancellation/', views.verify_and_process_cancellation, name='verify_and_process_cancellation'),
     path('refund_cancellation_logs/', views.logs_api, name='refund_cancellation_logs'),
     path('dashboard-data/', views.dashboard_data, name='dashboard_data'),
-    path('savecollectorlocation/', views.save_collector_location, name='save_collector_location'),
+    path('sample_collector_location/', views.sample_collector_location, name='save_collector_location'),
 ]
