@@ -38,7 +38,7 @@ ALLOWED_HOSTS = [
     "node219938-env-0309642.in1.cloudlets.co.in",
     "3.109.122.211",
     "lab.shinovadatabase.in",
-    "node221864-env-0990718.in1.cloudlets.co.in"
+    "node221967-env-5683222.in1.cloudlets.co.in"
 ]
 
 X_FRAME_OPTIONS = 'ALLOWALL'
