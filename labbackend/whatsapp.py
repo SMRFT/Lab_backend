@@ -31,7 +31,7 @@ def get_pdf_from_gridfs(request, file_id):
 
 
 import json
-from twilio.rest import Client
+# from twilio.rest import Client
 from django.http import JsonResponse
 import os
 
