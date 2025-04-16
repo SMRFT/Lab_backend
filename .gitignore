@@ -20,3 +20,15 @@
 .env.development
 .env.test
 .env
+
+
+env
+env/*
+.venv
+.venv/*
+
+*.pyc
+**/*.pyc
+
+__pycache__/*
+*/__pycache__/*
