@@ -31,14 +31,6 @@ def get_pdf_from_gridfs(request, file_id):
 
 
 import json
-from twilio.rest import Client
-from django.http import JsonResponse
-import os
-
-TWILIO_ACCOUNT_SID = "ACe1d37f2342c44648499add958166abe2"
-TWILIO_AUTH_TOKEN = "5ca7ffa9ca23cf7849cc94f752717d7d"
-TWILIO_WHATSAPP_NUMBER = "whatsapp:+14155238886"  # Twilio Sandbox Number
-import json
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 

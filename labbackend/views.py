@@ -4,7 +4,7 @@ from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.decorators import api_view
 from rest_framework import viewsets, status
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta,date
 from django.db.models import Max
 from urllib.parse import quote_plus
 from pymongo import MongoClient
@@ -13,20 +13,50 @@ from django.forms.models import model_to_dict
 from django.shortcuts import get_object_or_404
 from django.utils.dateparse import parse_date
 import json
-
 from .serializers import RegisterSerializer
-
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
-from django.views.decorators.csrf import csrf_exempt
 from .models import Register
-from .serializers import RegisterSerializer
+import logging
+from .models import BarcodeTestDetails 
+from .serializers import PatientSerializer
+from .models import Patient 
+from collections import defaultdict
+import certifi
+from .models import SampleStatus
+from .serializers import SampleStatusSerializer
+from .models import SampleCollector
+from .serializers import SampleCollectorSerializer
+import pytz
+from django.utils import timezone 
+from .serializers import TestValueSerializer
+from django.utils.timezone import make_aware
+from .models import TestValue
+import traceback
+from .models import SalesVisitLog
+import re
+from rest_framework.views import APIView
+from .models import  TestValue
+from bson import ObjectId
+from .models import HospitalLab
+from .serializers import HospitalLabSerializer
+from .models import LogisticData
+from .serializers import LogisticDataSerializer
+from .serializers import SalesVisitLogSerializer
+from rest_framework import status,viewsets
+from django.db.models import Q
+from rest_framework.decorators import action
+from django.core.mail import send_mail
+from django.core.mail import EmailMessage
+from django.conf import settings  
+import random
+import os
+from gridfs import GridFS
+from django.shortcuts import get_list_or_404
+from .models import LogisticTask
+from .serializers import LogisticTaskSerializer
+from .models import ClinicalName
+from .serializers import ClinicalNameSerializer
+from django.http import HttpResponse
 
-from .serializers import RegisterSerializer
-
-
-from .serializers import RegisterSerializer
 @api_view(['GET', 'POST', 'PUT'])
 @csrf_exempt
 def registration(request):
@@ -99,9 +129,6 @@ def registration(request):
         serializer = RegisterSerializer(sales_persons, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-   
-
-from .models import Register
 @api_view(['POST'])
 def login(request):
     name = request.data.get('name')
@@ -118,9 +145,7 @@ def login(request):
             return Response({"error": "Invalid password"}, status=status.HTTP_401_UNAUTHORIZED)
     except Register.DoesNotExist:
         return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
-   
-
-from .serializers import PatientSerializer
+ 
 @api_view(['POST'])
 @csrf_exempt
 def create_patient(request):
@@ -131,7 +156,6 @@ def create_patient(request):
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
    
-
 @api_view(['GET'])
 def get_latest_bill_no(request):
     today = datetime.now().strftime('%Y%m%d')  # Get today's date in YYYYMMDD format
@@ -147,11 +171,6 @@ def get_latest_bill_no(request):
     # Generate the new bill number
     new_bill_no = f"{today}{next_id:04d}"  # Format: YYYYMMDD0001
     return Response({"bill_no": new_bill_no}, status=status.HTTP_200_OK)
-
-
-from datetime import datetime
-from django.http import JsonResponse
-from .models import BarcodeTestDetails
 
 def get_existing_barcode(request):
     patient_id = request.GET.get('patient_id')
@@ -191,15 +210,6 @@ def get_existing_barcode(request):
     except ValueError:
         return JsonResponse({'error': 'Invalid date format. Use YYYY-MM-DD.'}, status=400)
 
-
-
-
-
-
-import logging
-from django.http import JsonResponse
-from .models import BarcodeTestDetails  # Replace with your actual model import
-
 logger = logging.getLogger(__name__)
 
 def get_max_barcode(request):
@@ -237,19 +247,6 @@ def get_max_barcode(request):
     except Exception as e:
         logger.error(f"Error in get_max_barcode: {e}")
         return JsonResponse({'error': 'Failed to generate barcode'}, status=500)
-
-
-
-
-
-
-   
-
-from datetime import datetime
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-import json
-from .models import BarcodeTestDetails
 
 @csrf_exempt
 def save_barcodes(request):
@@ -293,16 +290,6 @@ def save_barcodes(request):
 
         except Exception as e:
             return JsonResponse({'error': str(e)}, status=400)
-
-   
-
-from .serializers import PatientSerializer
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
-from django.views.decorators.csrf import csrf_exempt
-from .models import Patient  # Ensure you import the Patient model
-
 @api_view(['GET'])
 @csrf_exempt
 def get_all_patients(request):
@@ -311,8 +298,6 @@ def get_all_patients(request):
 
     serializer = PatientSerializer(patients, many=True)
     return Response(serializer.data, status=status.HTTP_200_OK)
-
-
 
 @api_view(['GET'])
 def get_latest_patient_id(request):
@@ -325,7 +310,6 @@ def get_latest_patient_id(request):
     else:
         new_patient_id = "SD001"
     return Response({"patient_id": new_patient_id}, status=status.HTTP_200_OK)
-
 
 @csrf_exempt
 def get_patient_details(request):
@@ -366,13 +350,7 @@ def get_patient_details(request):
    
     except Exception as e:
         return JsonResponse({'error': f'Error fetching patient details: {str(e)}'}, status=500)
-   
-
-from django.http import JsonResponse
-from .models import Patient
-from django.forms.models import model_to_dict
-from datetime import datetime, timedelta
-
+  
 def get_patients_by_date(request):
     start_date = request.GET.get('start_date')
     end_date = request.GET.get('end_date')
@@ -430,9 +408,6 @@ def get_patients_by_date(request):
 
     return JsonResponse({'error': 'Both start_date and end_date parameters are required.'}, status=400)
 
-
-
-
 def get_received_samples(request):
     # Get patient_id and date from the query parameters
     patient_id = request.GET.get('patient_id')
@@ -479,19 +454,11 @@ def get_received_samples(request):
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 
-from collections import defaultdict
 def convert_to_float(value):
     try:
         return float(value)
     except (ValueError, TypeError):
         return 0.0
-
-from collections import defaultdict
-import json
-from datetime import datetime, timedelta
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from django.http import JsonResponse
 
 def convert_to_float(value):
     try:
@@ -539,8 +506,7 @@ def patient_report(request):
         'refund_amount': 0,  # Track refunds processed
         'payment_totals': {'Cash': 0, 'UPI': 0, 'Neft': 0, 'Cheque': 0, 'Credit': 0, 'PartialPayment': 0}
     })
-    
-    # Process each patient's data
+     
     # Process each patient's data
     for patient in patients:
         patient_date = patient.get('date')
@@ -679,15 +645,6 @@ def patient_report(request):
     client.close()  # Close MongoDB connection
     return Response({'report': report_list})
 
-
-
-
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-from pymongo import MongoClient
-import json
-import certifi
-from urllib.parse import quote_plus
 @csrf_exempt  # Allow GET, POST, and PATCH requests without CSRF protection
 def get_test_details(request):
     try:
@@ -744,7 +701,6 @@ def get_test_details(request):
         print("Error:", e)
         return JsonResponse({'error': 'An error occurred'}, status=500)
 
-
 @csrf_exempt
 def handle_patch_request(request):
     try:
@@ -777,7 +733,6 @@ def handle_patch_request(request):
         print("Error:", e)
         return JsonResponse({'error': 'An error occurred while updating data'}, status=500)
 
-
 @csrf_exempt
 def get_test_parameters(request, test_name):
     try:
@@ -803,9 +758,6 @@ def get_test_parameters(request, test_name):
         print("Error fetching parameters:", e)
         return JsonResponse({"error": "Failed to fetch parameters"}, status=500)
 
-
-from .models import SampleCollector
-from .serializers import SampleCollectorSerializer
 @api_view(['GET', 'POST'])
 def sample_collector(request):
     if request.method == 'POST':
@@ -819,9 +771,6 @@ def sample_collector(request):
         serializer = SampleCollectorSerializer(collectors, many=True)
         return Response(serializer.data)
 
-
-# from .models import ClinicalName
-# from .serializers import ClinicalNameSerializer
 # @api_view(['GET', 'POST'])
 # def clinical_name(request):
 #     if request.method == 'POST':
@@ -840,7 +789,6 @@ def sample_collector(request):
 #     if last_clinical:
 #         return JsonResponse({'referrerCode': last_clinical.referrerCode})
 #     return JsonResponse({'referrerCode': 'SD0000'})
-   
 
 from .models import RefBy
 from .serializers import RefBySerializer
@@ -857,8 +805,6 @@ def refby(request):
         serializer = RefBySerializer(collectors, many=True)
         return Response(serializer.data)
 
-
-from .models import Patient
 def compare_test_details(request):
     # MongoDB connection setup
     password = quote_plus('Smrft@2024')
@@ -936,21 +882,6 @@ def compare_test_details(request):
     # Return all collected test details in the response
     return JsonResponse({'data': test_data})
 
-
-
-
-
-
-
-
-from .models import SampleStatus
-from .serializers import SampleStatusSerializer
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
-from datetime import datetime, timedelta
-import json
-
 @api_view(['GET'])
 def get_samplestatus_testvalue(request):
     try:
@@ -991,18 +922,6 @@ def get_samplestatus_testvalue(request):
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
-
-
-
-
-
-
-
- 
-
-from .serializers import TestValueSerializer
-from .models import Patient
 @api_view(['GET', 'POST','PATCH'])
 def save_test_value(request):
     if request.method == 'GET':
@@ -1139,6 +1058,7 @@ def save_test_value(request):
             return Response({"message": "Test details updated successfully."}, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 @api_view(['PATCH'])
 def update_test_value(request):
     # MongoDB connection
@@ -1195,17 +1115,6 @@ def update_test_value(request):
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
-from datetime import datetime
-import pytz
-import json
-from pymongo import MongoClient
-import certifi
-from urllib.parse import quote_plus
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
-
 # Define IST timezone
 TIME_ZONE = 'Asia/Kolkata'
 IST = pytz.timezone(TIME_ZONE)
@@ -1259,8 +1168,6 @@ def update_dispatch_status(request, patient_id):
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
-from .models import  TestValue
 @api_view(['GET'])
 def get_test_report(request):
     day = request.GET.get('day')
@@ -1284,8 +1191,6 @@ def get_test_report(request):
         for obj in queryset
     ]
     return Response({"data": report_data})
-
-
 
 def get_test_values(request):
     # Get date from request parameters
@@ -1329,7 +1234,6 @@ def get_test_values(request):
         ]
         return JsonResponse(data, safe=False)
 
-
 @api_view(['GET'])
 def test_values(request):
     # Get the date parameter from the request
@@ -1346,15 +1250,6 @@ def test_values(request):
     except ValueError:
         return Response({"error": "Invalid date format"}, status=400)
 
-
-from django.utils import timezone  # Import Django's timezone module
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_http_methods
-from pymongo import MongoClient
-import json
-import certifi
-from urllib.parse import quote_plus
 @csrf_exempt
 @require_http_methods(["PATCH"])
 def approve_test_detail(request, patient_id, test_index):
@@ -1411,6 +1306,7 @@ def approve_test_detail(request, patient_id, test_index):
             return JsonResponse({"error": "Failed to update test detail."}, status=500)
     else:
         return JsonResponse({"error": "Invalid test index."}, status=400)
+
 @csrf_exempt
 @require_http_methods(["PATCH"])
 def rerun_test_detail(request, patient_id, test_index):
@@ -1513,12 +1409,6 @@ def update_test_detail(request, patient_id):
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-
-
-from django.http import JsonResponse
-from .models import SampleStatus, BarcodeTestDetails
-from django.forms.models import model_to_dict
-import json
 def get_samplepatients_by_date(request):
     date = request.GET.get('date')
     if not date:
@@ -1549,17 +1439,6 @@ def get_samplepatients_by_date(request):
     except ValueError:
         return JsonResponse({'error': 'Invalid date format. Use YYYY-MM-DDTHH:MM:SS.'}, status=400)
 
-
-
-
-
-
-
-   
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-import json
-from .models import SampleStatus
 @csrf_exempt
 def sample_status(request):
     if request.method == 'POST':
@@ -1601,28 +1480,6 @@ def sample_status(request):
             return JsonResponse({'error': str(e)}, status=400)
     return JsonResponse({'error': 'Invalid request method'}, status=405)
 
-
-
-
-
-
-
-
-from django.utils import timezone  # Import Django's timezone module
-from django.http import JsonResponse
-from pymongo import MongoClient
-import json
-import certifi
-from urllib.parse import quote_plus
-from django.views.decorators.csrf import csrf_exempt
-
-from django.utils import timezone  # Import Django's timezone module
-from django.http import JsonResponse
-from pymongo import MongoClient
-import json
-import certifi
-from urllib.parse import quote_plus
-from django.views.decorators.csrf import csrf_exempt
 @csrf_exempt
 def update_sample_status(request, patient_id):
     password = quote_plus('Smrft@2024')
@@ -1726,23 +1583,6 @@ def get_sample_collected(request):
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=500)
 
-       
-from datetime import datetime
-from django.utils import timezone  # Import Django's timezone module
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-from pymongo import MongoClient
-import json
-import certifi
-from urllib.parse import quote_plus
-
-from django.utils import timezone  # Import Django's timezone module
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-from pymongo import MongoClient
-import json
-import certifi
-from urllib.parse import quote_plus
 @csrf_exempt
 def update_sample_collected(request, patient_id):
     # MongoDB connection setup
@@ -1805,18 +1645,12 @@ def update_sample_collected(request, patient_id):
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=500)
 
-
 @api_view(['GET'])
 def patient_overview(request):
     patients = Patient.objects.all()
     serializer = PatientSerializer(patients, many=True)  # Serialize the queryset
     return Response(serializer.data)
 
-
-
-   
-from .models import Patient  # Adjust the import based on your project structure
-from .models import Patient  # Adjust the import based on your project structure
 def get_barcode_by_date(request):
     date = request.GET.get('date')  # Expecting 'YYYY-MM-DD'
     if date:
@@ -1870,8 +1704,7 @@ def get_barcode_by_date(request):
         except ValueError:
             return JsonResponse({'error': 'Invalid date format. Use YYYY-MM-DD.'}, status=400)
     return JsonResponse({'error': 'Date parameter is required.'}, status=400)
-from django.http import JsonResponse
-from .models import BarcodeTestDetails
+
 def check_barcode(request):
     patient_id = request.GET.get('patient_id')
     date = request.GET.get('date')
@@ -1951,13 +1784,7 @@ def get_patient_test_details(request):
 
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
-  
 
-from django.http import JsonResponse
-from datetime import datetime
-from django.utils.timezone import make_aware
-from .models import SampleStatus, TestValue
-import traceback
 def patient_test_status(request):
     try:
         patient_ids = request.GET.getlist('patient_id')  # Accept multiple patient IDs
@@ -2048,13 +1875,7 @@ def patient_test_status(request):
         print("Critical Error:", str(e))
         print(traceback.format_exc())
         return JsonResponse({'error': str(e)}, status=500)
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-import json
-from datetime import datetime, timedelta
-from pymongo import MongoClient
-from urllib.parse import quote_plus
-import certifi
+
 @csrf_exempt
 def overall_report(request):
     # MongoDB Connection Setup
@@ -2207,11 +2028,7 @@ def overall_report(request):
             })
         return JsonResponse(formatted_data, safe=False)
     return JsonResponse({"error": "Invalid request method. Only GET is allowed."}, status=405)
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-import json
-from datetime import datetime
-from .models import TestValue  # Import your model
+
 @csrf_exempt
 def patient_test_sorting(request):
     try:
@@ -2242,13 +2059,7 @@ def patient_test_sorting(request):
         return JsonResponse({patient_id: {"testdetails": test_list}})
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-import json
-from pymongo import MongoClient
-from urllib.parse import quote_plus
-import certifi
-from datetime import datetime
+
 @csrf_exempt
 def credit_amount_update(request, patient_id):
     password = quote_plus('Smrft@2024')
@@ -2314,8 +2125,6 @@ def credit_amount_update(request, patient_id):
     else:
         return JsonResponse({"error": "Invalid request method. Only PATCH is allowed."}, status=405)
 
-
-
 @api_view(['PATCH'])
 def update_credit_amount(request, patient_id):
     # MongoDB connection setup
@@ -2364,9 +2173,7 @@ def update_credit_amount(request, patient_id):
     # Return an error if credit_amount was not provided in the request
     return Response({"error": "Credit amount is required."}, status=status.HTTP_400_BAD_REQUEST)
 
-
-from django.core.mail import EmailMessage
-from django.conf import settings  # To access the settings for DEFAULT_FROM_EMAIL
+ # To access the settings for DEFAULT_FROM_EMAIL
 @api_view(['POST'])
 def send_email(request):
     try:
@@ -2396,39 +2203,6 @@ def send_email(request):
         return JsonResponse({'status': 'success', 'message': 'Email sent successfully!'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
-   
-from datetime import datetime, timedelta
-from django.views.decorators.csrf import csrf_exempt
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
-from .models import SalesVisitLog
-from .serializers import SalesVisitLogSerializer
-from datetime import datetime, timedelta
-
-from datetime import datetime, timedelta
-from django.views.decorators.csrf import csrf_exempt
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
-from .models import SalesVisitLog
-from .serializers import SalesVisitLogSerializer
-from datetime import datetime
-from django.http import JsonResponse
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
-from .models import SalesVisitLog
-from .serializers import SalesVisitLogSerializer
-
-from datetime import datetime, timedelta
-from django.views.decorators.csrf import csrf_exempt
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
-from .models import SalesVisitLog
-from .serializers import SalesVisitLogSerializer
-import re
 
 @csrf_exempt
 @api_view(['GET', 'POST'])
@@ -2487,24 +2261,6 @@ def salesvisitlog(request):
         serializer = SalesVisitLogSerializer(logs, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-from .models import SalesVisitLog
-from .serializers import SalesVisitLogSerializer
-import datetime
-from datetime import datetime
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-from .models import SalesVisitLog  # Ensure you import your model
-from .serializers import SalesVisitLogSerializer
-
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-from .models import SalesVisitLog
-from .serializers import SalesVisitLogSerializer
-from datetime import datetime, date  # Import `date` separately
-
 @csrf_exempt
 def get_sales_log(request):
     date_param = request.GET.get("date")  # YYYY-MM or YYYY-MM-DD
@@ -2534,10 +2290,6 @@ def get_sales_log(request):
     serializer = SalesVisitLogSerializer(sales_logs, many=True)
     return JsonResponse(serializer.data, safe=False)
 
-
-
-from .models import HospitalLab
-from .serializers import HospitalLabSerializer
 @api_view(['GET', 'POST'])
 def hospitallabform(request):
     if request.method == 'GET':
@@ -2556,9 +2308,6 @@ def hospitallabform(request):
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
    
-
-from .models import LogisticData
-from .serializers import LogisticDataSerializer
 @api_view(['POST'])
 def save_logistic_data(request):
     if request.method == 'POST':
@@ -2567,8 +2316,7 @@ def save_logistic_data(request):
             serializer.save()  # Save the logistic data
             return Response({"message": "Data saved successfully!"}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-   
-   
+  
 @api_view(['GET'])
 def get_logistic_data(request):
     if request.method == 'GET':
@@ -2576,25 +2324,6 @@ def get_logistic_data(request):
         serializer = LogisticDataSerializer(data, many=True)
         return Response(serializer.data)
    
-
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
-from datetime import datetime
-from .models import LogisticTask
-from .serializers import LogisticTaskSerializer
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
-from .models import LogisticTask
-from .serializers import LogisticTaskSerializer
-from datetime import datetime
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
-from .models import LogisticTask
-from .serializers import LogisticTaskSerializer
-from datetime import datetime
 @api_view(['POST', 'GET'])
 def savesamplecollectordetails(request):
     if request.method == 'POST':
@@ -2623,17 +2352,7 @@ def savesamplecollectordetails(request):
         tasks = LogisticTask.objects.all()  # Fetch all logistic data
         serializer = LogisticTaskSerializer(tasks, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
-from rest_framework.decorators import api_view
-from datetime import datetime
-from pymongo import MongoClient
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
-from datetime import datetime
-from pymongo import MongoClient
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
+
 @api_view(['PATCH'])
 def update_sample_collector_details(request):
     password = quote_plus('Smrft@2024')
@@ -2674,7 +2393,6 @@ def update_sample_collector_details(request):
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
    
-
 def getlogisticdatabydate(request):
     # Get query parameters
     sample_collector = request.GET.get('sampleCollector', None)
@@ -2685,7 +2403,6 @@ def getlogisticdatabydate(request):
     # Serialize the data
     serializer = LogisticDataSerializer(data, many=True)
     return JsonResponse(serializer.data, safe=False)
-   
 
 @csrf_exempt
 def get_patient_by_id(request, patient_id):
@@ -2726,14 +2443,6 @@ def get_patient_by_id(request, patient_id):
         except Patient.DoesNotExist:
             return JsonResponse({"error": "Patient not found"}, status=404)
     return JsonResponse({"error": "Invalid HTTP method"}, status=405)
-
-
-from datetime import datetime, timedelta
-import pytz
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from .models import Patient, SampleStatus, TestValue
-from .serializers import PatientSerializer, SampleStatusSerializer, TestValueSerializer
 
 # Define the timezone for India Standard Time (IST)
 IST = pytz.timezone('Asia/Kolkata')
@@ -2809,17 +2518,6 @@ class ConsolidatedDataView(APIView):
         except Exception as e:
             return Response({"error": str(e)}, status=500)
 
-
-
-
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-import json
-from pymongo import MongoClient
-from urllib.parse import quote_plus
-import certifi
-from bson import ObjectId
-
 # Function to get MongoDB collection
 def get_mongo_collection():
     password = quote_plus("Smrft@2024")
@@ -2830,16 +2528,6 @@ def get_mongo_collection():
     )
     db = client["Lab"]
     return db["labbackend_invoice"]
-
-
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-import json
-from pymongo import MongoClient
-from urllib.parse import quote_plus
-import certifi
-from bson import ObjectId
-
 
 # Function to get MongoDB collection
 def get_mongo_collection():
@@ -2876,8 +2564,6 @@ def generate_invoice(request):
             return JsonResponse({"error": "Invalid JSON"}, status=400)
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=500)
-
-
 
 def get_invoices(request):
     collection = get_mongo_collection()
@@ -2929,6 +2615,7 @@ def update_invoice(request, invoice_number):
             return JsonResponse({"error": "Invalid JSON"}, status=400)
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=500) 
+
 @csrf_exempt
 def delete_invoice(request, invoice_id):
     """Delete an invoice based on invoice_id"""
@@ -2947,11 +2634,6 @@ def delete_invoice(request, invoice_id):
 
     return JsonResponse({"error": "Invalid request method"}, status=400)
 
-
-from django.http import JsonResponse
-from .models import Patient
-from datetime import datetime, timedelta
-import json
 def salesdashboard(request):
     sales_mapping = request.GET.get("salesMapping")
     date_str = request.GET.get("date")  # YYYY-MM-DD
@@ -3000,60 +2682,14 @@ def salesdashboard(request):
         })
     except ValueError:
         return JsonResponse({"error": "Invalid date or month format"}, status=400)
-    
-
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from .models import SalesVisitLog
-from .serializers import SalesVisitLogSerializer
+ 
 @api_view(['GET'])
 def getsalesmapping(request):
     if request.method == 'GET':
         data = SalesVisitLog.objects.all()
         serializer = SalesVisitLogSerializer(data, many=True)
         return Response(serializer.data)
-    
-from rest_framework.response import Response
-from django.http import JsonResponse, HttpResponse
-from rest_framework.views import APIView
-from django.views.decorators.http import require_http_methods
-from django.views.decorators.csrf import csrf_exempt
-from rest_framework.decorators import api_view
-from rest_framework import status,viewsets
-from datetime import datetime, timedelta
-from django.db.models import Max
-from urllib.parse import quote_plus
-from pymongo import MongoClient
-from django.views.decorators.http import require_GET
-from django.forms.models import model_to_dict
-from django.shortcuts import get_object_or_404
-from django.utils.dateparse import parse_date
-from django.utils.timezone import make_aware
-from django.db.models import Q
-from rest_framework.decorators import action
-from django.core.mail import send_mail
-import traceback
-import logging
-from django.core.mail import EmailMessage
-from django.conf import settings  # To access the settings for DEFAULT_FROM_EMAIL
-import json
-import random
-import certifi
-import pytz
-import gridfs
-import os
-from gridfs import GridFS
-from pymongo import MongoClient
-from django.shortcuts import get_list_or_404
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from .models import LogisticTask
-from .serializers import LogisticTaskSerializer
-from django.shortcuts import get_list_or_404
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from .models import Patient
-from .serializers import PatientSerializer
+ 
 @api_view(['GET'])
 def logisticdashboard(request):
     sample_collector = request.GET.get('sampleCollector')
@@ -3069,14 +2705,6 @@ def logisticdashboard(request):
     except Patient.DoesNotExist:
         return Response({"error": "No data found"}, status=404)
 
-
-import json
-import random
-from pymongo import MongoClient
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-import json
-from datetime import datetime
 client = MongoClient("mongodb+srv://shinovalab:Smrft%402024@cluster0.xbq9c.mongodb.net/?retryWrites=true&w=majority")
 db = client["Lab"]
 collection = db["labbackend_patient"]
@@ -3144,7 +2772,6 @@ def search_refund(request):
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=500)
        
-
 # Temporary dictionary to hold OTPs (non-persistent)
 otp_storage_refund = {}
 
@@ -3202,7 +2829,6 @@ Shanmuga Diagnostics"""
             return JsonResponse({"error": str(e)}, status=500)
 
     return JsonResponse({"error": "Invalid request method."}, status=405)
-
 
 @csrf_exempt
 def verify_and_process_refund(request):
@@ -3275,7 +2901,6 @@ def verify_and_process_refund(request):
 
     return JsonResponse({"error": "Invalid request method."}, status=405)
 
-
 @csrf_exempt
 def search_cancellation(request):
     if request.method == "GET":
@@ -3326,8 +2951,7 @@ def search_cancellation(request):
         
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=500)
-        
-
+      
 # Temporary dictionary to hold OTPs (non-persistent)
 otp_storage_cancellation = {}
 
@@ -3385,7 +3009,6 @@ Shanmuga Diagnostics"""
             return JsonResponse({"error": str(e)}, status=500)
 
     return JsonResponse({"error": "Invalid request method."}, status=405)
-
 
 @csrf_exempt
 def verify_and_process_cancellation(request):
@@ -3489,8 +3112,6 @@ def verify_and_process_cancellation(request):
 
     return JsonResponse({"error": "Invalid request method."}, status=405)
 
-
-
 @api_view(['GET'])
 def get_patients(request):
     """Fetch patients registered on a given date"""
@@ -3507,27 +3128,6 @@ def get_patients(request):
     except ValueError:
         return Response({"error": "Invalid date format. Use YYYY-MM-DD"}, status=status.HTTP_400_BAD_REQUEST)
     
-
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
-from datetime import datetime, timedelta
-from .models import Patient
-from .serializers import PatientSerializer
-
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
-import json
-from .models import Patient
-
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
-import json
-from datetime import datetime, timedelta
-from .models import Patient
-
 @api_view(['GET'])
 def get_patient_tests(request, patient_id, date):
     """Fetch test details for a given patient ID and date"""
@@ -3580,16 +3180,6 @@ def get_patient_tests(request, patient_id, date):
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
-from django.http import JsonResponse
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
-from pymongo import MongoClient
-import certifi
-import json
-from urllib.parse import quote_plus
-
 @api_view(['PATCH'])
 def update_billing(request, patient_id):
     password = quote_plus('Smrft@2024')
@@ -3636,22 +3226,6 @@ def update_billing(request, patient_id):
 
     return Response(updated_patient, status=status.HTTP_200_OK)
 
-
-
-from pymongo import MongoClient
-import gridfs
-from .models import ClinicalName
-from .serializers import ClinicalNameSerializer
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
-from gridfs import GridFS
-import certifi
-from rest_framework.decorators import action
-
-
-from .models import ClinicalName
-from .serializers import ClinicalNameSerializer
 # MongoDB Connection Setup
 def get_mongodb_connection():
     # Properly escape the password
@@ -3665,6 +3239,7 @@ def get_mongodb_connection():
     )
     db = client.Lab  # Database name
     return db, GridFS(db)
+
 # View for handling referrer code generation
 @api_view(['GET'])
 def get_last_referrer_code(request):
@@ -3676,6 +3251,7 @@ def get_last_referrer_code(request):
             return Response({'referrerCode': 'SD0000'})
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 @api_view(['POST', 'GET'])
 @csrf_exempt
 def clinical_name(request):
@@ -3716,6 +3292,7 @@ def clinical_name(request):
         clinical_names = ClinicalName.objects.filter(status="APPROVED")  # Filter only approved entries
         serializer = ClinicalNameSerializer(clinical_names, many=True)
         return Response(serializer.data)
+
 @api_view(['GET'])
 def download_mou_file(request, clinical_name_id):
     try:
@@ -3737,12 +3314,6 @@ def download_mou_file(request, clinical_name_id):
             {'error': 'File retrieval failed', 'details': str(e)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-from bson import ObjectId
-from django.http import HttpResponse
-from rest_framework.response import Response
-from rest_framework.decorators import api_view
-from rest_framework import status
-# Assume get_mongodb_connection is already imported
 
 @api_view(['GET'])
 def preview_mou_file(request, file_id):
@@ -3823,7 +3394,6 @@ class ClinicalNameViewSet(viewsets.ModelViewSet):
             )
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
 
 @csrf_exempt
 @require_http_methods(["GET"])
@@ -3950,16 +3520,7 @@ def logs_api(request):
     except Exception as e:
         print(f"Error in logs_api: {str(e)}")
         return JsonResponse({"error": str(e)}, status=500)
-    
-
-
-from django.http import JsonResponse
-from django.views.decorators.http import require_GET
-from datetime import datetime, date
-from pymongo import MongoClient
-import certifi
-from urllib.parse import quote_plus
-import json
+ 
 @require_GET
 def dashboard_data(request):
     try:
