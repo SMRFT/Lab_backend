@@ -19,8 +19,8 @@
 .env.production.local
 .env.development
 .env.test
-.env
 
+.env
 
 env
 env/*

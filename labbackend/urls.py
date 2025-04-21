@@ -99,5 +99,6 @@ urlpatterns = [
     path('refund_cancellation_logs/', views.logs_api, name='refund_cancellation_logs'),
     path('mou-preview/<str:file_id>/',views.preview_mou_file, name='preview_mou_file'),
     path('dashboard-data/', views.dashboard_data, name='dashboard_data'),
+    path('sample_collector_location/', views.sample_collector_location, name='save_collector_location'),
 
 ]

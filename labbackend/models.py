@@ -1,6 +1,5 @@
 from django.db import models
 from datetime import datetime
-
 class Register(models.Model):
     name = models.CharField(max_length=500)
     role = models.CharField(max_length=500)
@@ -209,5 +208,18 @@ class LogisticTask(models.Model):
         return f"{self.date} - {self.lab_name} - {self.salesMapping}"
 
 
-
+class SampleCollectorLocation(models.Model):
+    id = models.CharField(primary_key=True,max_length=50)  # Use AutoField for auto-incrementing IDs
+    sampleCollector = models.CharField(max_length=255)
+    date = models.DateField()
+    latitudeStart = models.CharField(max_length=255)
+    longitudeStart = models.CharField(max_length=255)
+    latitudeEnd = models.CharField(max_length=255)
+    longitudeEnd = models.CharField(max_length=255)
+    distance_travelled = models.CharField(max_length=255)
     
+    def __str__(self):
+        return f"{self.sampleCollector} - {self.date}"
+    
+    class Meta:
+        unique_together = ('sampleCollector', 'date') 
