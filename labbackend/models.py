@@ -173,12 +173,12 @@ class HospitalLab(models.Model):
         ('StandAlone', 'StandAlone'),
         ('Lab', 'Lab'),
     ]
-    hospitalName = models.CharField(max_length=255)
+    hospitalName = models.CharField(max_length=255,blank=True)
     type = models.CharField(max_length=50, choices=TYPE_CHOICES, default='StandAlone')
-    contactPerson = models.CharField(max_length=255)
-    contactNumber = models.CharField(max_length=20)
-    emailId = models.EmailField()
-    salesMapping = models.CharField(max_length=255)
+    contactPerson = models.CharField(max_length=255,blank=True)
+    contactNumber = models.CharField(max_length=255,blank=True)
+    emailId = models.EmailField(max_length=255,blank=True)
+    salesMapping =models.CharField(max_length=255,blank=True)
     def __str__(self):
         return self.hospitalName
 
