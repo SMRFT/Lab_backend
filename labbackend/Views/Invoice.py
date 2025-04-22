@@ -8,17 +8,17 @@ import certifi
 from ..models import Patient
 from datetime import datetime
 from django.views.decorators.csrf import csrf_exempt
+import pytz
+import os
+from dotenv import load_dotenv
 
+load_dotenv()
 
 # Function to get MongoDB collection
 
 def get_mongo_collection():
     password = quote_plus("Smrft@2024")
-    client = MongoClient(
-        f"mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority",
-        tls=True,
-        tlsCAFile=certifi.where(),
-    )
+    client = MongoClient(os.getenv('DB_HOST'))
     db = client["Lab"]
     return db["labbackend_invoice"]
 

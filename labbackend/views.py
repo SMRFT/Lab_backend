@@ -37,7 +37,10 @@ from .models import BarcodeTestDetails
 from .serializers import SampleStatusSerializer
 from .serializers import TestValueSerializer
 
+import os
+from dotenv import load_dotenv
 
+load_dotenv()
 
 
 def convert_to_float(value):
@@ -68,11 +71,7 @@ def patient_report(request):
     
     # MongoDB Connection Setup
     password = quote_plus('Smrft@2024')
-    client = MongoClient(
-        f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-        tls=True,
-        tlsCAFile=certifi.where()
-    )
+    client = MongoClient(os.getenv('DB_HOST'))
     db = client.Lab
     patients_collection = db["labbackend_patient"]  # MongoDB collection
     
@@ -238,11 +237,7 @@ def get_test_details(request):
         # Securely encode password
         password = quote_plus('Smrft@2024')
         # MongoDB connection with TLS certificate
-        client = MongoClient(
-            f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-            tls=True,  # Enable TLS/SSL
-            tlsCAFile=certifi.where()  # Use certifi's CA certificate bundle
-        )
+        client = MongoClient(os.getenv('DB_HOST'))
         db = client.Lab  # Database name
         collection = db.labbackend_testdetails  # Collection name
         if request.method == 'GET':
@@ -295,11 +290,7 @@ def handle_patch_request(request):
         # MongoDB connection setup inside the function
         password = quote_plus('Smrft@2024')
         # MongoDB connection with TLS certificate
-        client = MongoClient(
-            f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-            tls=True,  # Enable TLS/SSL
-            tlsCAFile=certifi.where()  # Use certifi's CA certificate bundle
-        )
+        client = MongoClient(os.getenv('DB_HOST'))
         db = client.Lab  # Database name
         collection = db.labbackend_testdetails  # Collection name
         data = json.loads(request.body.decode('utf-8'))
@@ -328,11 +319,7 @@ def get_test_parameters(request, test_name):
         password = quote_plus('Smrft@2024')
 
         # MongoDB connection with TLS certificate
-        client = MongoClient(
-            f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-            tls=True,  # Enable TLS/SSL
-            tlsCAFile=certifi.where()  # Use certifi's CA certificate bundle
-        )
+        client = MongoClient(os.getenv('DB_HOST'))
 
         db = client.Lab  # Database name
         collection = db.labbackend_testdetails
@@ -351,11 +338,7 @@ def compare_test_details(request):
     # MongoDB connection setup
     password = quote_plus('Smrft@2024')
         # MongoDB connection with TLS certificate
-    client = MongoClient(
-            f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-            tls=True,  # Enable TLS/SSL
-            tlsCAFile=certifi.where()  # Use certifi's CA certificate bundle
-        )
+    client = MongoClient(os.getenv('DB_HOST'))
     db = client.Lab  # Database name
     collection = db.labbackend_testdetails  # Collection name
     # Retrieve the date and patient ID from the request
@@ -539,11 +522,7 @@ def save_test_value(request):
             # MongoDB connection
         password = quote_plus('Smrft@2024')
         # MongoDB connection with TLS certificate
-        client = MongoClient(
-            f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-            tls=True,  # Enable TLS/SSL
-            tlsCAFile=certifi.where()  # Use certifi's CA certificate bundle
-        )
+        client = MongoClient(os.getenv('DB_HOST'))
         db = client.Lab  # Database name
         collection = db.labbackend_testvalue
         # Extract parameters from the request
@@ -607,11 +586,7 @@ def update_test_value(request):
     # MongoDB connection
     password = quote_plus('Smrft@2024')
     # MongoDB connection with TLS certificate
-    client = MongoClient(
-            f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-            tls=True,  # Enable TLS/SSL
-            tlsCAFile=certifi.where()  # Use certifi's CA certificate bundle
-        )
+    client = MongoClient(os.getenv('DB_HOST'))
     db = client.Lab  # Database name
     collection = db.labbackend_testvalue
     try:
@@ -671,11 +646,7 @@ def update_dispatch_status(request, patient_id):
     password = quote_plus('Smrft@2024')
 
     # MongoDB connection with TLS certificate
-    client = MongoClient(
-        f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-        tls=True,  # Enable TLS/SSL
-        tlsCAFile=certifi.where()  # Use certifi's CA certificate bundle
-    )
+    client = MongoClient(os.getenv('DB_HOST'))
 
     db = client.Lab  # Database name
     collection = db.labbackend_testvalue
@@ -806,11 +777,7 @@ def approve_test_detail(request, patient_id, test_index):
     # MongoDB connection
     password = quote_plus('Smrft@2024')
     # MongoDB connection with TLS certificate
-    client = MongoClient(
-        f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-        tls=True,  # Enable TLS/SSL
-        tlsCAFile=certifi.where()  # Use certifi's CA certificate bundle
-    )
+    client = MongoClient(os.getenv('DB_HOST'))
     db = client.Lab  # Database name
     collection = db.labbackend_testvalue  # Your collection name
     # Log the incoming request body
@@ -862,11 +829,7 @@ def rerun_test_detail(request, patient_id, test_index):
     # MongoDB connection
     password = quote_plus('Smrft@2024')
         # MongoDB connection with TLS certificate
-    client = MongoClient(
-            f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-            tls=True,  # Enable TLS/SSL
-            tlsCAFile=certifi.where()  # Use certifi's CA certificate bundle
-        )
+    client = MongoClient(os.getenv('DB_HOST'))
     db = client.Lab  # Database name
     collection = db.labbackend_testvalue  # Your collection name
     """Rerun the test detail at the given index for the specified patient."""
@@ -913,11 +876,7 @@ def update_test_detail(request, patient_id):
     password = quote_plus('Smrft@2024')
 
         # MongoDB connection with TLS certificate
-    client = MongoClient(
-            f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-            tls=True,  # Enable TLS/SSL
-            tlsCAFile=certifi.where()  # Use certifi's CA certificate bundle
-        )
+    client = MongoClient(os.getenv('DB_HOST'))
 
     db = client.Lab  # Database name
     collection = db.labbackend_testvalue  # Your collection name

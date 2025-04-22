@@ -12,9 +12,12 @@ from ..models import Patient
 import certifi
 from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_GET
+import os
+from dotenv import load_dotenv
 
+load_dotenv()
 
-client = MongoClient("mongodb+srv://shinovalab:Smrft%402024@cluster0.xbq9c.mongodb.net/?retryWrites=true&w=majority")
+client = MongoClient(os.getenv('DB_HOST'))
 db = client["Lab"]
 collection = db["labbackend_patient"]
 @csrf_exempt
@@ -97,11 +100,7 @@ def get_patient_tests(request, patient_id, date):
 @api_view(['PATCH'])
 def update_billing(request, patient_id):
     password = quote_plus('Smrft@2024')
-    client = MongoClient(
-        f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-        tls=True,
-        tlsCAFile=certifi.where()
-    )
+    client = MongoClient(os.getenv('DB_HOST'))
     db = client.Lab
     collection = db['labbackend_patient']
 
@@ -150,11 +149,7 @@ def update_credit_amount(request, patient_id):
     password = quote_plus('Smrft@2024')
 
         # MongoDB connection with TLS certificate
-    client = MongoClient(
-            f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-            tls=True,  # Enable TLS/SSL
-            tlsCAFile=certifi.where()  # Use certifi's CA certificate bundle
-        )
+    client = MongoClient(os.getenv('DB_HOST'))
 
     db = client.Lab  # Database name
     collection = db['labbackend_patient']
@@ -198,11 +193,7 @@ def update_credit_amount(request, patient_id):
 def credit_amount_update(request, patient_id):
     password = quote_plus('Smrft@2024')
     # MongoDB connection with TLS certificate
-    client = MongoClient(
-        f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-        tls=True,
-        tlsCAFile=certifi.where()
-    )
+    client = MongoClient(os.getenv('DB_HOST'))
     db = client.Lab
     collection = db['labbackend_patient']
     if request.method == "PATCH":

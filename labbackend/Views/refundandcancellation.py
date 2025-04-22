@@ -15,7 +15,10 @@ from django.conf import settings  #
 from datetime import datetime, date 
 from django.views.decorators.http import require_GET
 from django.views.decorators.http import require_http_methods
+import os
+from dotenv import load_dotenv
 
+load_dotenv()
 @csrf_exempt
 def search_refund(request):
     if request.method == "GET":
@@ -140,11 +143,7 @@ def verify_and_process_refund(request):
 
             # Connect to MongoDB
             password = quote_plus('Smrft@2024')
-            client = MongoClient(
-                f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-                tls=True,
-                tlsCAFile=certifi.where()
-            )
+            client = MongoClient(os.getenv('DB_HOST'))
             db = client.Lab
             patients_collection = db["labbackend_patient"]
 
@@ -322,11 +321,7 @@ def verify_and_process_cancellation(request):
 
             # Connect to MongoDB
             password = quote_plus('Smrft@2024')
-            client = MongoClient(
-                f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-                tls=True,
-                tlsCAFile=certifi.where()
-            )
+            client = MongoClient(os.getenv('DB_HOST'))
             db = client.Lab
             patients_collection = db["labbackend_patient"]
 
@@ -410,11 +405,7 @@ def logs_api(request):
     """Combined API endpoint for both refund and cancellation logs"""
     try:
         password = quote_plus('Smrft@2024')
-        client = MongoClient(
-                f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-                tls=True,
-                tlsCAFile=certifi.where()
-            )
+        client = MongoClient(os.getenv('DB_HOST'))
         db = client.Lab
         patient_collection = db['labbackend_patient']
         

@@ -13,7 +13,10 @@ from datetime import timedelta
 from datetime import datetime, date 
 from ..models import SampleStatus 
 from ..models import BarcodeTestDetails
+import os
+from dotenv import load_dotenv
 
+load_dotenv()
 def get_samplepatients_by_date(request):
     date = request.GET.get('date')
     if not date:
@@ -91,11 +94,7 @@ def sample_status(request):
 def update_sample_status(request, patient_id):
     password = quote_plus('Smrft@2024')
     # MongoDB connection with TLS certificate
-    client = MongoClient(
-        f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-        tls=True,  # Enable TLS/SSL
-        tlsCAFile=certifi.where()  # Use certifi's CA certificate bundle
-    )
+    client = MongoClient(os.getenv('DB_HOST'))
     db = client.Lab  # Database name
     collection = db.labbackend_samplestatus
     if request.method == 'PUT':
@@ -195,11 +194,7 @@ def update_sample_collected(request, patient_id):
     # MongoDB connection setup
     password = quote_plus('Smrft@2024')
     # MongoDB connection with TLS certificate
-    client = MongoClient(
-        f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-        tls=True,  # Enable TLS/SSL
-        tlsCAFile=certifi.where()  # Use certifi's CA certificate bundle
-    )
+    client = MongoClient(os.getenv('DB_HOST'))
     db = client.Lab  # Database name
     collection = db.labbackend_samplestatus  # Collection name
     if request.method == "PUT":

@@ -12,7 +12,10 @@ from pymongo import MongoClient
 from datetime import datetime, timedelta
 import certifi
 
+import os
+from dotenv import load_dotenv
 
+load_dotenv()
 
 @api_view(['POST'])
 def save_logistic_data(request):
@@ -65,11 +68,7 @@ def savesamplecollectordetails(request):
 @api_view(['PATCH'])
 def update_sample_collector_details(request):
     password = quote_plus('Smrft@2024')
-    client = MongoClient(
-        f"mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority",
-        tls=True,
-        tlsCAFile=certifi.where(),
-    )
+    client = MongoClient(os.getenv('DB_HOST'))
     db = client["Lab"]
     collection = db["labbackend_logistictask"]
     try:

@@ -7,8 +7,11 @@ from ..serializers import RegisterSerializer
 from urllib.parse import quote_plus
 from pymongo import MongoClient
 import certifi
-
 from ..models import Register
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 @api_view(['GET', 'POST', 'PUT'])
 @csrf_exempt
 def registration(request):
@@ -37,11 +40,7 @@ def registration(request):
 
         try:
             password = quote_plus('Smrft@2024')
-            client = MongoClient(
-                f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-                tls=True,
-                tlsCAFile=certifi.where()
-            )
+            client = MongoClient(os.getenv('DB_HOST'))
             db = client.Lab
             collection = db['labbackend_register']
             

@@ -20,7 +20,10 @@ from bson import ObjectId
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 import pytz
+import os
+from dotenv import load_dotenv
 
+load_dotenv()
 # Define IST timezone
 TIME_ZONE = 'Asia/Kolkata'
 IST = pytz.timezone(TIME_ZONE)
@@ -30,11 +33,7 @@ def get_mongodb_connection():
     username = quote_plus("shinovalab")
     password = quote_plus("Smrft@2024")
     # MongoDB connection with TLS certificate
-    client = MongoClient(
-        f"mongodb+srv://{username}:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority",
-        tls=True,  # Enable TLS/SSL
-        tlsCAFile=certifi.where()  # Use certifi's CA certificate bundle
-    )
+    client = MongoClient(os.getenv('DB_HOST'))
     db = client.Lab  # Database name
     return db, GridFS(db)
 # View for handling referrer code generation
