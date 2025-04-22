@@ -95,6 +95,7 @@ urlpatterns = [
     path('refund_cancellation_logs/', views.logs_api, name='refund_cancellation_logs'),
     path('mou-preview/<str:file_id>/',views.preview_mou_file, name='preview_mou_file'),
     path('dashboard-data/', views.dashboard_data, name='dashboard_data'),
+    path('get_clinicalname/', views.get_clinicalname, name='get_clinicalname'),
 
 
     path('_b_a_c_k_e_n_d_/Diagnostics/registration/', views.registration, name='registration'),
@@ -187,5 +188,6 @@ urlpatterns = [
     path('_b_a_c_k_e_n_d_/Diagnostics/refund_cancellation_logs/', views.logs_api, name='refund_cancellation_logs'),
     path('_b_a_c_k_e_n_d_/Diagnostics/mou-preview/<str:file_id>/',views.preview_mou_file, name='preview_mou_file'),
     path('_b_a_c_k_e_n_d_/Diagnostics/dashboard-data/', views.dashboard_data, name='dashboard_data'),
+    path('_b_a_c_k_e_n_d_/Diagnostics/get_clinicalname/', views.get_clinicalname, name='get_clinicalname'),
 
 ]
