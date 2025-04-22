@@ -8,7 +8,9 @@ https://docs.djangoproject.com/en/5.1/howto/deployment/wsgi/
 """
 
 import os
+from dotenv import load_dotenv
 
+load_dotenv()
 # Read ENV_CLASSIFICATION environment variable to determine environment
 environment = os.getenv('ENV_CLASSIFICATION', 'local')
 print(f"Initializing WSGI environment: {environment}")

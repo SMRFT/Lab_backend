@@ -79,6 +79,41 @@ def get_patients(request):
         return Response({"error": "Invalid date format. Use YYYY-MM-DD"}, status=status.HTTP_400_BAD_REQUEST)
 
 @csrf_exempt
+def patients_by_date(request):
+    if request.method == "GET":
+        date_str = request.GET.get("date")
+        print("Received date:", date_str)
+
+        if not date_str:
+            return JsonResponse({"error": "Date parameter is required"}, status=400)
+
+        try:
+            selected_date = datetime.strptime(date_str, "%Y-%m-%d")
+        except ValueError:
+            return JsonResponse({"error": "Invalid date format. Use YYYY-MM-DD."}, status=400)
+
+        start_of_day = datetime.combine(selected_date, datetime.min.time())
+        end_of_day = datetime.combine(selected_date, datetime.max.time())
+
+        print("Start of day:", start_of_day)
+        print("End of day:", end_of_day)
+
+        patients = Patient.objects.filter(date__gte=start_of_day, date__lte=end_of_day)
+        print("Found patients:", patients.count())
+
+        result = []
+        for patient in patients:
+            test_count = len(patient.testname) if isinstance(patient.testname, list) else 0
+            result.append({
+                "patientname": patient.patientname,
+                "test_count": test_count,
+                "totalAmount": patient.totalAmount,
+                "bill_no": patient.bill_no,
+            })
+
+        return JsonResponse(result, safe=False)
+
+@csrf_exempt
 def get_patient_details(request):
     patient_id = request.GET.get('patient_id')
     phone = request.GET.get('phone')
@@ -184,6 +219,11 @@ def patient_overview(request):
     patients = Patient.objects.all()
     serializer = PatientSerializer(patients, many=True)  # Serialize the queryset
     return Response(serializer.data)
+
+
+
+
+
 
 
 

@@ -128,6 +128,21 @@ DATABASES = {
         }
     }
 }
+
+
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'djongo',
+#         'NAME': 'Lab',
+#         'ENFORCE_SCHEMA': False,
+#         'CLIENT': {
+#             'host': 'mongodb+srv://shinovalab:<db_password>@cluster0.xbq9c.mongodb.net/?retryWrites=true&w=majority',
+#             'password': 'Smrft@2024',
+#             'tls': True,  # Enable TLS/SSL
+#             'tlsCAFile': certifi.where(),  # Use certifi's CA certificate
+#         }
+#     }
+# }
 # DATABASES = {
 #     'default': {
 #         'ENGINE': 'djongo',

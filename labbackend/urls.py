@@ -8,16 +8,16 @@ from rest_framework_simplejwt.views import (
 
 from .Views import whatsapp
 from labbackend.Views.Security import registration ,login
-from labbackend.Views.patients import create_patient,get_all_patients,get_latest_bill_no,get_latest_patient_id,get_patient_details,get_patients_by_date,patient_overview,get_patient_by_id,get_patients
+from labbackend.Views.patients import create_patient,get_all_patients,get_latest_bill_no,get_latest_patient_id,get_patient_details,get_patients_by_date,patient_overview,get_patient_by_id,get_patients,patients_by_date
 from labbackend.Views.barcode import get_max_barcode,save_barcodes,get_existing_barcode,get_barcode_by_date,check_barcode
 from labbackend.Views.location import sample_collector_location
 from labbackend.Views.salesvisit import salesvisitlog ,get_sales_log,hospitallabform,salesdashboard
 from labbackend.Views.addform import sample_collector ,refby
 from labbackend.Views.Invoice import generate_invoice,get_invoices,delete_invoice,update_invoice
-from labbackend.Views.updatebillingandpatient import update_patient,update_credit_amount,update_billing,get_patient_tests
+from labbackend.Views.updatebillingandpatient import update_patient,update_credit_amount,update_billing,get_patient_tests,credit_amount_update
 from labbackend.Views.samplestatus import get_received_samples ,get_sample_collected,update_sample_collected,get_samplepatients_by_date,sample_status,update_sample_status
-from labbackend.Views.logistic import save_logistic_data,get_logistic_data,getlogisticdatabydate,savesamplecollectordetails,update_sample_collector_details
-from labbackend.Views.refundandcancellation import search_cancellation,verify_and_process_refund,search_refund,verify_and_process_cancellation,generate_otp_cancellation,generate_otp_refund
+from labbackend.Views.logistic import save_logistic_data,get_logistic_data,getlogisticdatabydate,savesamplecollectordetails,update_sample_collector_details,getsalesmapping,logisticdashboard
+from labbackend.Views.refundandcancellation import search_cancellation,verify_and_process_refund,search_refund,verify_and_process_cancellation,generate_otp_cancellation,generate_otp_refund,logs_api,dashboard_data
 from labbackend.Views.clinicalname import clinical_name,get_last_referrer_code,get_clinicalname,ClinicalNameViewSet,preview_mou_file
 
 
@@ -66,7 +66,7 @@ urlpatterns = [
     path('all-patients/', get_all_patients, name='get_all_patients'),
     path('overall_report/', views.overall_report, name='overall_report'),
     path('patient_test_sorting/', views.patient_test_sorting, name='patient_test_sorting'),
-    path('credit_amount/<str:patient_id>/', views.credit_amount_update, name='credit_amount_update'),
+    path('credit_amount/<str:patient_id>/', credit_amount_update, name='credit_amount_update'),
     path('update-credit/<str:patient_id>/', update_credit_amount, name='update_credit_amount'),
     path('send-email/', views.send_email, name='send_email'),
     path('SalesVisitLog/', salesvisitlog, name='salesvisitlog'),
@@ -87,8 +87,8 @@ urlpatterns = [
     path("update-invoice/<str:invoice_number>/", update_invoice, name="update-invoice"),
     path("delete-invoice/<str:invoice_id>/", delete_invoice, name="delete-invoice"),
     path('salesdashboard/',salesdashboard, name='salesdashboard'),
-    path('getsalesmapping/',views.getsalesmapping, name='getsalesmapping'),
-    path('logisticdashboard/', views.logisticdashboard, name='logisticdashboard'),
+    path('getsalesmapping/',getsalesmapping, name='getsalesmapping'),
+    path('logisticdashboard/',logisticdashboard, name='logisticdashboard'),
     path('search_refund/', search_refund, name='search_refund'),
     path('verify_and_process_refund/', verify_and_process_refund, name='verify_and_process_refund'),
     path('search_cancellation/', search_cancellation, name='search_cancellation'),
@@ -110,10 +110,11 @@ urlpatterns = [
     path('generate_otp_cancellation/', generate_otp_cancellation, name='generate_otp_cancellation'),
     path('search_cancellation/', search_cancellation, name='search_cancellation'),
     path('verify_and_process_cancellation/',verify_and_process_cancellation, name='verify_and_process_cancellation'),
-    path('refund_cancellation_logs/', views.logs_api, name='refund_cancellation_logs'),
+    path('refund_cancellation_logs/', logs_api, name='refund_cancellation_logs'),
     path('mou-preview/<str:file_id>/',preview_mou_file, name='preview_mou_file'),
-    path('dashboard-data/', views.dashboard_data, name='dashboard_data'),
+    path('dashboard-data/', dashboard_data, name='dashboard_data'),
     path('sample_collector_location/', sample_collector_location, name='save_collector_location'),
     path('get_clinicalname/', get_clinicalname, name='get_clinicalname'),
+    path('patients-by-date/', patients_by_date),
 
 ]

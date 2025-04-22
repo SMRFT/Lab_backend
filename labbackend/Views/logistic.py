@@ -1,6 +1,6 @@
 
-from ..models import LogisticTask ,LogisticData
-from ..serializers import LogisticDataSerializer
+from ..models import LogisticTask ,LogisticData,Patient,SalesVisitLog
+from ..serializers import LogisticDataSerializer,LogisticTaskSerializer,SalesVisitLogSerializer,PatientSerializer
 from ..serializers import LogisticTaskSerializer
 from rest_framework.response import Response
 from django.http import JsonResponse
@@ -114,3 +114,27 @@ def getlogisticdatabydate(request):
     serializer = LogisticDataSerializer(data, many=True)
     return JsonResponse(serializer.data, safe=False)
    
+
+
+@api_view(['GET'])
+def getsalesmapping(request):
+    if request.method == 'GET':
+        data = SalesVisitLog.objects.all()
+        serializer = SalesVisitLogSerializer(data, many=True)
+        return Response(serializer.data)
+    
+
+@api_view(['GET'])
+def logisticdashboard(request):
+    sample_collector = request.GET.get('sampleCollector')
+    selected_date = request.GET.get('date')
+    if not sample_collector:
+        return Response({"error": "Sample collector is required"}, status=400)
+    try:
+        data = Patient.objects.filter(sample_collector=sample_collector)
+        if selected_date:
+            data = data.filter(date=selected_date)  # Filter by selected date
+        serializer = PatientSerializer(data, many=True)
+        return Response(serializer.data)
+    except Patient.DoesNotExist:
+        return Response({"error": "No data found"}, status=404)

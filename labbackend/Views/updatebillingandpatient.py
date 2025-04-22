@@ -11,7 +11,7 @@ import json
 from ..models import Patient
 import certifi
 from django.shortcuts import get_object_or_404
-
+from django.views.decorators.http import require_GET
 
 
 client = MongoClient("mongodb+srv://shinovalab:Smrft%402024@cluster0.xbq9c.mongodb.net/?retryWrites=true&w=majority")
@@ -191,3 +191,70 @@ def update_credit_amount(request, patient_id):
         }, status=status.HTTP_200_OK)
     # Return an error if credit_amount was not provided in the request
     return Response({"error": "Credit amount is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+@csrf_exempt
+def credit_amount_update(request, patient_id):
+    password = quote_plus('Smrft@2024')
+    # MongoDB connection with TLS certificate
+    client = MongoClient(
+        f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
+        tls=True,
+        tlsCAFile=certifi.where()
+    )
+    db = client.Lab
+    collection = db['labbackend_patient']
+    if request.method == "PATCH":
+        try:
+            body = json.loads(request.body)
+            # Convert incoming values
+            credit_amount = str(body.get("credit_amount", "0"))  # Store as a string
+            amount_paid = int(float(body.get("amount_paid", 0)))
+            paid_date = body.get("paid_date", None)
+            payment_method = body.get("payment_method", "N/A")  # Default to "N/A" if missing
+            # Validate required fields
+            if not credit_amount:
+                return JsonResponse({"error": "Missing required field: credit_amount."}, status=400)
+            # Fetch the patient document
+            patient = collection.find_one({"patient_id": patient_id})
+            if not patient:
+                return JsonResponse({"error": "Patient not found."}, status=404)
+            # Parse existing credit details safely
+            credit_details = patient.get("credit_details", [])
+            if isinstance(credit_details, str):
+                try:
+                    credit_details = json.loads(credit_details)
+                except json.JSONDecodeError:
+                    credit_details = []
+            # Calculate the updated credit amount
+            current_credit_amount = int(float(patient.get("credit_amount", 0)))
+            updated_credit_amount = str(current_credit_amount - amount_paid)  # Store as string
+            # Append the new entry to `credit_details`
+            credit_details.append({
+                "credit_amount": credit_amount,  # Stored as a string
+                "amount_paid": amount_paid,
+                "paid_date": paid_date,
+                "payment_method": payment_method,  # Store payment method
+                "remaining_amount": updated_credit_amount  # Stored as a string
+            })
+            # Update the database
+            collection.update_one(
+                {"patient_id": patient_id},
+                {
+                    "$set": {
+                        "credit_amount": updated_credit_amount,  # Store as a string
+                        "credit_details": json.dumps(credit_details)  # Store as JSON string
+                    }
+                }
+            )
+            return JsonResponse({
+                "message": "Credit amount updated successfully.",
+                "credit_details": credit_details
+            })
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON format."}, status=400)
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=500)
+    else:
+        return JsonResponse({"error": "Invalid request method. Only PATCH is allowed."}, status=405)
