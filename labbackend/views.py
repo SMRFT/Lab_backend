@@ -177,6 +177,7 @@ def get_latest_bill_no(request):
     new_bill_no = f"{today}{next_id:04d}"  # Format: YYYYMMDD0001
     return Response({"bill_no": new_bill_no}, status=status.HTTP_200_OK)
 
+@permission_classes([HasRoleAndDataPermission])
 def get_existing_barcode(request):
     patient_id = request.GET.get('patient_id')
     date = request.GET.get('date')
@@ -216,7 +217,7 @@ def get_existing_barcode(request):
         return JsonResponse({'error': 'Invalid date format. Use YYYY-MM-DD.'}, status=400)
 
 logger = logging.getLogger(__name__)
-
+@permission_classes([HasRoleAndDataPermission])
 def get_max_barcode(request):
     try:
         max_barcode = 0  # Initialize the maximum barcode value
@@ -321,6 +322,7 @@ def get_latest_patient_id(request):
     return Response({"patient_id": new_patient_id}, status=status.HTTP_200_OK)
 
 @csrf_exempt
+@permission_classes([HasRoleAndDataPermission])
 def get_patient_details(request):
     patient_id = request.GET.get('patient_id')
     phone = request.GET.get('phone')
@@ -359,7 +361,8 @@ def get_patient_details(request):
    
     except Exception as e:
         return JsonResponse({'error': f'Error fetching patient details: {str(e)}'}, status=500)
-  
+    
+@permission_classes([HasRoleAndDataPermission]) 
 def get_patients_by_date(request):
     start_date = request.GET.get('start_date')
     end_date = request.GET.get('end_date')
@@ -3406,6 +3409,7 @@ def preview_mou_file(request, file_id):
         )
 
 # ViewSet for managing clinical names with approval workflow
+@permission_classes([HasRoleAndDataPermission])
 class ClinicalNameViewSet(viewsets.ModelViewSet):
     queryset = ClinicalName.objects.all()
     serializer_class = ClinicalNameSerializer
