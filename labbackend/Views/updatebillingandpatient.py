@@ -13,6 +13,11 @@ import certifi
 from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_GET
 import os
+#auth
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny
+from pyauth.auth import HasRoleAndDataPermission
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -20,7 +25,10 @@ load_dotenv()
 client = MongoClient(os.getenv('DB_HOST'))
 db = client["Lab"]
 collection = db["labbackend_patient"]
+
+@api_view(['PUT'])
 @csrf_exempt
+@permission_classes([HasRoleAndDataPermission])
 def update_patient(request, patient_id):
     if request.method == "PUT":
         try:
@@ -46,6 +54,7 @@ def update_patient(request, patient_id):
 
 
 @api_view(['GET'])
+@permission_classes([HasRoleAndDataPermission])
 def get_patient_tests(request, patient_id, date):
     """Fetch test details for a given patient ID and date"""
     try:
@@ -98,6 +107,7 @@ def get_patient_tests(request, patient_id, date):
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['PATCH'])
+@permission_classes([HasRoleAndDataPermission])
 def update_billing(request, patient_id):
     password = quote_plus('Smrft@2024')
     client = MongoClient(os.getenv('DB_HOST'))
@@ -144,6 +154,7 @@ def update_billing(request, patient_id):
 
 
 @api_view(['PATCH'])
+@permission_classes([HasRoleAndDataPermission])
 def update_credit_amount(request, patient_id):
     # MongoDB connection setup
     password = quote_plus('Smrft@2024')
@@ -188,8 +199,9 @@ def update_credit_amount(request, patient_id):
     return Response({"error": "Credit amount is required."}, status=status.HTTP_400_BAD_REQUEST)
 
 
-
+@api_view(['PATCH'])
 @csrf_exempt
+@permission_classes([HasRoleAndDataPermission])
 def credit_amount_update(request, patient_id):
     password = quote_plus('Smrft@2024')
     # MongoDB connection with TLS certificate

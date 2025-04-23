@@ -14,9 +14,17 @@ from datetime import datetime, date
 from ..models import SampleStatus 
 from ..models import BarcodeTestDetails
 import os
+#auth
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny
+from pyauth.auth import HasRoleAndDataPermission
 from dotenv import load_dotenv
 
 load_dotenv()
+
+@api_view(['GET'])
+@permission_classes([HasRoleAndDataPermission])
 def get_samplepatients_by_date(request):
     date = request.GET.get('date')
     if not date:
@@ -47,7 +55,9 @@ def get_samplepatients_by_date(request):
     except ValueError:
         return JsonResponse({'error': 'Invalid date format. Use YYYY-MM-DDTHH:MM:SS.'}, status=400)
 
+@api_view(['POST'])
 @csrf_exempt
+@permission_classes([HasRoleAndDataPermission])
 def sample_status(request):
     if request.method == 'POST':
         try:
@@ -89,8 +99,9 @@ def sample_status(request):
     return JsonResponse({'error': 'Invalid request method'}, status=405)
 
 
-
+@api_view(['PUT'])
 @csrf_exempt
+@permission_classes([HasRoleAndDataPermission])
 def update_sample_status(request, patient_id):
     password = quote_plus('Smrft@2024')
     # MongoDB connection with TLS certificate
@@ -145,7 +156,9 @@ def update_sample_status(request, patient_id):
             return JsonResponse({'error': str(e)}, status=400)
     return JsonResponse({'error': 'Invalid request method'}, status=405)
 
+@api_view(['GET'])
 @csrf_exempt
+@permission_classes([HasRoleAndDataPermission])
 def get_sample_collected(request):
     if request.method == "GET":
         try:
@@ -188,8 +201,11 @@ def get_sample_collected(request):
             return JsonResponse({"data": data}, safe=False)
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=500)
+        
 
+@api_view(['PUT'])
 @csrf_exempt
+@permission_classes([HasRoleAndDataPermission])
 def update_sample_collected(request, patient_id):
     # MongoDB connection setup
     password = quote_plus('Smrft@2024')
@@ -246,8 +262,9 @@ def update_sample_collected(request, patient_id):
             return JsonResponse({"message": "Sample status updated successfully"}, status=200)
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=500)
-        
 
+@api_view(['GET'])       
+@permission_classes([HasRoleAndDataPermission])
 def get_received_samples(request):
     # Get patient_id and date from the query parameters
     patient_id = request.GET.get('patient_id')

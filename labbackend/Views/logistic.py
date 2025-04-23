@@ -11,6 +11,11 @@ from urllib.parse import quote_plus
 from pymongo import MongoClient
 from datetime import datetime, timedelta
 import certifi
+#auth
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny
+from pyauth.auth import HasRoleAndDataPermission
 
 import os
 from dotenv import load_dotenv
@@ -18,6 +23,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 @api_view(['POST'])
+@permission_classes([HasRoleAndDataPermission])
 def save_logistic_data(request):
     if request.method == 'POST':
         serializer = LogisticDataSerializer(data=request.data)
@@ -28,6 +34,7 @@ def save_logistic_data(request):
    
    
 @api_view(['GET'])
+@permission_classes([HasRoleAndDataPermission])
 def get_logistic_data(request):
     if request.method == 'GET':
         data = LogisticData.objects.all()  # Fetch all logistic data
@@ -37,6 +44,7 @@ def get_logistic_data(request):
 
 
 @api_view(['POST', 'GET'])
+@permission_classes([HasRoleAndDataPermission])
 def savesamplecollectordetails(request):
     if request.method == 'POST':
         tasks_data = request.data
@@ -66,6 +74,7 @@ def savesamplecollectordetails(request):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 @api_view(['PATCH'])
+@permission_classes([HasRoleAndDataPermission])
 def update_sample_collector_details(request):
     password = quote_plus('Smrft@2024')
     client = MongoClient(os.getenv('DB_HOST'))
@@ -100,8 +109,10 @@ def update_sample_collector_details(request):
             return Response({"error": "Missing required fields."}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-   
+    
 
+@api_view(['GET'])
+@permission_classes([HasRoleAndDataPermission])
 def getlogisticdatabydate(request):
     # Get query parameters
     sample_collector = request.GET.get('sampleCollector', None)
@@ -116,6 +127,7 @@ def getlogisticdatabydate(request):
 
 
 @api_view(['GET'])
+@permission_classes([HasRoleAndDataPermission])
 def getsalesmapping(request):
     if request.method == 'GET':
         data = SalesVisitLog.objects.all()
@@ -124,6 +136,7 @@ def getsalesmapping(request):
     
 
 @api_view(['GET'])
+@permission_classes([HasRoleAndDataPermission])
 def logisticdashboard(request):
     sample_collector = request.GET.get('sampleCollector')
     selected_date = request.GET.get('date')

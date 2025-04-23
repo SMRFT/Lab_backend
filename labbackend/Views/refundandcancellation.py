@@ -16,10 +16,18 @@ from datetime import datetime, date
 from django.views.decorators.http import require_GET
 from django.views.decorators.http import require_http_methods
 import os
+#auth
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny
+from pyauth.auth import HasRoleAndDataPermission
 from dotenv import load_dotenv
 
 load_dotenv()
+
+@api_view(['GET'])
 @csrf_exempt
+@permission_classes([HasRoleAndDataPermission])
 def search_refund(request):
     if request.method == "GET":
         patient_id = request.GET.get('patient_id')
@@ -63,7 +71,10 @@ def search_refund(request):
 # Temporary dictionary to hold OTPs (non-persistent)
 otp_storage_refund = {}
 
+
+@api_view(['POST'])
 @csrf_exempt
+@permission_classes([HasRoleAndDataPermission])
 def generate_otp_refund(request):
     if request.method == "POST":
         try:
@@ -118,8 +129,9 @@ Shanmuga Diagnostics"""
 
     return JsonResponse({"error": "Invalid request method."}, status=405)
 
-
+@api_view(['POST'])
 @csrf_exempt
+@permission_classes([HasRoleAndDataPermission])
 def verify_and_process_refund(request):
     if request.method == "POST":
         try:
@@ -186,8 +198,9 @@ def verify_and_process_refund(request):
 
     return JsonResponse({"error": "Invalid request method."}, status=405)
 
-
+@api_view(['GET'])
 @csrf_exempt
+@permission_classes([HasRoleAndDataPermission])
 def search_cancellation(request):
     if request.method == "GET":
         patient_id = request.GET.get('patient_id')
@@ -242,7 +255,10 @@ def search_cancellation(request):
 # Temporary dictionary to hold OTPs (non-persistent)
 otp_storage_cancellation = {}
 
+
+@api_view(['POST'])
 @csrf_exempt
+@permission_classes([HasRoleAndDataPermission])
 def generate_otp_cancellation(request):
     if request.method == "POST":
         try:
@@ -297,8 +313,9 @@ Shanmuga Diagnostics"""
 
     return JsonResponse({"error": "Invalid request method."}, status=405)
 
-
+@api_view(['POST'])
 @csrf_exempt
+@permission_classes([HasRoleAndDataPermission])
 def verify_and_process_cancellation(request):
     if request.method == "POST":
         try:
@@ -398,9 +415,9 @@ def verify_and_process_cancellation(request):
 
 
 
-
+@api_view(['GET'])
 @csrf_exempt
-@require_http_methods(["GET"])
+@permission_classes([HasRoleAndDataPermission])
 def logs_api(request):
     """Combined API endpoint for both refund and cancellation logs"""
     try:
@@ -524,7 +541,8 @@ def logs_api(request):
 
 
 
-@require_GET
+@api_view(['GET'])
+@permission_classes([HasRoleAndDataPermission])
 def dashboard_data(request):
     try:
         # Get date range and payment method from request parameters

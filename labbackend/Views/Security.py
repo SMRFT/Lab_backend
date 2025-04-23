@@ -9,11 +9,17 @@ from pymongo import MongoClient
 import certifi
 from ..models import Register
 import os
+#auth
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny
+from pyauth.auth import HasRoleAndDataPermission
 from dotenv import load_dotenv
 
 load_dotenv()
 @api_view(['GET', 'POST', 'PUT'])
 @csrf_exempt
+@permission_classes([HasRoleAndDataPermission])
 def registration(request):
     if request.method == 'POST':
         # Handle Registration
@@ -82,6 +88,7 @@ def registration(request):
 
 
 @api_view(['POST'])
+@permission_classes([HasRoleAndDataPermission])
 def login(request):
     name = request.data.get('name')
     password = request.data.get('password')

@@ -10,19 +10,26 @@ from datetime import datetime
 from django.views.decorators.csrf import csrf_exempt
 import pytz
 import os
+#auth
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny
+from pyauth.auth import HasRoleAndDataPermission
 from dotenv import load_dotenv
-
 load_dotenv()
 
-# Function to get MongoDB collection
 
+
+# Function to get MongoDB collection
 def get_mongo_collection():
     password = quote_plus("Smrft@2024")
     client = MongoClient(os.getenv('DB_HOST'))
     db = client["Lab"]
     return db["labbackend_invoice"]
 
+@api_view(["POST"])
 @csrf_exempt
+@permission_classes([HasRoleAndDataPermission])
 def generate_invoice(request):
     collection = get_mongo_collection()
     if request.method == "POST":
@@ -47,15 +54,16 @@ def generate_invoice(request):
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=500)
 
-
-
+@api_view(["GET"])
+@permission_classes([HasRoleAndDataPermission])
 def get_invoices(request):
     collection = get_mongo_collection()
     invoices = list(collection.find({}, {"_id": 0}))  # Exclude MongoDB's `_id` field
     return JsonResponse(invoices, safe=False)
 
-
+@api_view(['PUT'])
 @csrf_exempt
+@permission_classes([HasRoleAndDataPermission])
 def update_invoice(request, invoice_number):
     """Update the invoice with total, paid, and pending amounts, payment date and method."""
     collection = get_mongo_collection()
@@ -99,7 +107,11 @@ def update_invoice(request, invoice_number):
             return JsonResponse({"error": "Invalid JSON"}, status=400)
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=500) 
+        
+
+@api_view(['DELETE'])
 @csrf_exempt
+@permission_classes([HasRoleAndDataPermission])
 def delete_invoice(request, invoice_id):
     """Delete an invoice based on invoice_id"""
     collection = get_mongo_collection()

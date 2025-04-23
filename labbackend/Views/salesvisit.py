@@ -11,8 +11,17 @@ from ..models import SalesVisitLog ,HospitalLab,Patient
 from ..serializers import SalesVisitLogSerializer
 from datetime import datetime, timedelta
 from ..serializers import HospitalLabSerializer
+
+
+#auth
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny
+from pyauth.auth import HasRoleAndDataPermission
+
 @csrf_exempt
 @api_view(['GET', 'POST'])
+@permission_classes([HasRoleAndDataPermission])
 def salesvisitlog(request):
     if request.method == 'POST':
         serializer = SalesVisitLogSerializer(data=request.data)
@@ -69,8 +78,9 @@ def salesvisitlog(request):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
-
+@api_view(['GET'])
 @csrf_exempt
+@permission_classes([HasRoleAndDataPermission])
 def get_sales_log(request):
     date_param = request.GET.get("date")  # YYYY-MM or YYYY-MM-DD
     salesMapping = request.GET.get("salesMapping")
@@ -104,6 +114,7 @@ def get_sales_log(request):
 
 
 @api_view(['GET', 'POST'])
+@permission_classes([HasRoleAndDataPermission])
 def hospitallabform(request):
     if request.method == 'GET':
         # Retrieve all HospitalLab objects and serialize them
@@ -121,8 +132,8 @@ def hospitallabform(request):
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
-
-
+@api_view(['GET'])
+@permission_classes([HasRoleAndDataPermission])
 def salesdashboard(request):
     sales_mapping = request.GET.get("salesMapping")
     date_str = request.GET.get("date")  # YYYY-MM-DD

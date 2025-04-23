@@ -8,13 +8,19 @@ from datetime import datetime
 from django.forms.models import model_to_dict
 from django.db.models import Max
 import math
+
 from ..models import SampleCollectorLocation
 
 import json
-
+#auth
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny
+from pyauth.auth import HasRoleAndDataPermission
 
 @api_view(['GET', 'POST', 'PUT'])
 @csrf_exempt
+@permission_classes([HasRoleAndDataPermission])
 def sample_collector_location(request):
     """
     Handle GET, POST, and PUT requests for sample collector location
@@ -220,6 +226,7 @@ def sample_collector_location(request):
             'success': False,
             'message': 'Method not allowed'
         }, status=405)
+
 def calculate_distance(lat1, lon1, lat2, lon2):
     """
     Calculate the distance between two points on Earth using the Haversine formula

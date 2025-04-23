@@ -25,7 +25,10 @@ import traceback
 from django.conf import settings  # To access the settings for DEFAULT_FROM_EMAIL
 import json
 import certifi
-
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny
+from pyauth.auth import HasRoleAndDataPermission
 #Models
 from .models import Patient
 from .models import SampleStatus
@@ -56,6 +59,7 @@ def convert_to_float(value):
         return 0.0
 
 @api_view(['GET'])
+@permission_classes([HasRoleAndDataPermission])
 def patient_report(request):
     start_date_str = request.GET.get('start_date')
     end_date_str = request.GET.get('end_date')
@@ -231,7 +235,10 @@ def patient_report(request):
     client.close()  # Close MongoDB connection
     return Response({'report': report_list})
 
+
+@api_view(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])
 @csrf_exempt  # Allow GET, POST, and PATCH requests without CSRF protection
+@permission_classes([HasRoleAndDataPermission])
 def get_test_details(request):
     try:
         # Securely encode password
@@ -283,8 +290,9 @@ def get_test_details(request):
         print("Error:", e)
         return JsonResponse({'error': 'An error occurred'}, status=500)
 
-
+@api_view(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])
 @csrf_exempt
+@permission_classes([HasRoleAndDataPermission])
 def handle_patch_request(request):
     try:
         # MongoDB connection setup inside the function
@@ -312,6 +320,7 @@ def handle_patch_request(request):
         print("Error:", e)
         return JsonResponse({'error': 'An error occurred while updating data'}, status=500)
 
+@api_view(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])
 @csrf_exempt
 def get_test_parameters(request, test_name):
     try:
@@ -332,8 +341,11 @@ def get_test_parameters(request, test_name):
     except Exception as e:
         print("Error fetching parameters:", e)
         return JsonResponse({"error": "Failed to fetch parameters"}, status=500)
+    
 
 
+@api_view(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])
+@permission_classes([HasRoleAndDataPermission])
 def compare_test_details(request):
     # MongoDB connection setup
     password = quote_plus('Smrft@2024')
@@ -408,6 +420,7 @@ def compare_test_details(request):
     return JsonResponse({'data': test_data})
 
 @api_view(['GET'])
+@permission_classes([HasRoleAndDataPermission])
 def get_samplestatus_testvalue(request):
     try:
         # Get the date from the query parameter
@@ -449,6 +462,7 @@ def get_samplestatus_testvalue(request):
 
 
 @api_view(['GET', 'POST','PATCH'])
+@permission_classes([HasRoleAndDataPermission])
 def save_test_value(request):
     if request.method == 'GET':
         patient_id = request.GET.get('patient_id')
@@ -582,6 +596,7 @@ def save_test_value(request):
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
 @api_view(['PATCH'])
+@permission_classes([HasRoleAndDataPermission])
 def update_test_value(request):
     # MongoDB connection
     password = quote_plus('Smrft@2024')
@@ -641,6 +656,7 @@ TIME_ZONE = 'Asia/Kolkata'
 IST = pytz.timezone(TIME_ZONE)
 
 @api_view(['PATCH'])
+@permission_classes([HasRoleAndDataPermission])
 def update_dispatch_status(request, patient_id):
     # MongoDB connection
     password = quote_plus('Smrft@2024')
@@ -686,6 +702,7 @@ def update_dispatch_status(request, patient_id):
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET'])
+@permission_classes([HasRoleAndDataPermission])
 def get_test_report(request):
     day = request.GET.get('day')
     month = request.GET.get('month')
@@ -710,6 +727,8 @@ def get_test_report(request):
     return Response({"data": report_data})
 
 
+@api_view(['GET'])
+@permission_classes([HasRoleAndDataPermission])
 def get_test_values(request):
     # Get date from request parameters
     date = request.GET.get('date')
@@ -754,6 +773,7 @@ def get_test_values(request):
 
 
 @api_view(['GET'])
+@permission_classes([HasRoleAndDataPermission])
 def test_values(request):
     # Get the date parameter from the request
     date_str = request.GET.get('date')
@@ -770,9 +790,9 @@ def test_values(request):
         return Response({"error": "Invalid date format"}, status=400)
 
 
-
+@api_view(["PATCH"])
 @csrf_exempt
-@require_http_methods(["PATCH"])
+@permission_classes([HasRoleAndDataPermission])
 def approve_test_detail(request, patient_id, test_index):
     # MongoDB connection
     password = quote_plus('Smrft@2024')
@@ -823,8 +843,10 @@ def approve_test_detail(request, patient_id, test_index):
             return JsonResponse({"error": "Failed to update test detail."}, status=500)
     else:
         return JsonResponse({"error": "Invalid test index."}, status=400)
+    
+@api_view(['PATCH'])
 @csrf_exempt
-@require_http_methods(["PATCH"])
+@permission_classes([HasRoleAndDataPermission])
 def rerun_test_detail(request, patient_id, test_index):
     # MongoDB connection
     password = quote_plus('Smrft@2024')
@@ -871,6 +893,7 @@ def rerun_test_detail(request, patient_id, test_index):
 
 @csrf_exempt
 @api_view(['PATCH'])
+@permission_classes([HasRoleAndDataPermission])
 def update_test_detail(request, patient_id):
     # MongoDB connection
     password = quote_plus('Smrft@2024')
@@ -919,8 +942,8 @@ def update_test_detail(request, patient_id):
 
 
 
-
-
+@api_view(['GET'])
+@permission_classes([HasRoleAndDataPermission])
 def get_patient_test_details(request):
     patient_id = request.GET.get('patient_id')
     if not patient_id:
@@ -995,8 +1018,8 @@ def get_patient_test_details(request):
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
   
-
-
+@api_view(['GET'])
+@permission_classes([HasRoleAndDataPermission])
 def patient_test_status(request):
     try:
         patient_ids = request.GET.getlist('patient_id')  # Accept multiple patient IDs
@@ -1088,8 +1111,9 @@ def patient_test_status(request):
         print(traceback.format_exc())
         return JsonResponse({'error': str(e)}, status=500)
 
-
+@api_view(['GET','PATCH'])
 @csrf_exempt
+@permission_classes([HasRoleAndDataPermission])
 def overall_report(request):
     # MongoDB Connection Setup
     password = quote_plus('Smrft@2024')
@@ -1242,8 +1266,9 @@ def overall_report(request):
         return JsonResponse(formatted_data, safe=False)
     return JsonResponse({"error": "Invalid request method. Only GET is allowed."}, status=405)
 
-
+@api_view(['GET'])
 @csrf_exempt
+@permission_classes([HasRoleAndDataPermission])
 def patient_test_sorting(request):
     try:
         patient_id = request.GET.get('patient_id')
@@ -1276,6 +1301,7 @@ def patient_test_sorting(request):
 
 
 @api_view(['POST'])
+@permission_classes([HasRoleAndDataPermission])
 def send_email(request):
     try:
         subject = request.data.get('subject', 'No Subject')
@@ -1309,7 +1335,7 @@ def send_email(request):
 
 # Define the timezone for India Standard Time (IST)
 IST = pytz.timezone('Asia/Kolkata')
-
+@permission_classes([HasRoleAndDataPermission])
 class ConsolidatedDataView(APIView):
     def get(self, request):
         # Default to today's date if no date is provided

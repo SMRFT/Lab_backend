@@ -13,8 +13,15 @@ import json
 from ..models import Patient
 
 from datetime import datetime, timedelta
+#auth
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny
+from pyauth.auth import HasRoleAndDataPermission
+
 @api_view(['POST'])
 @csrf_exempt
+@permission_classes([HasRoleAndDataPermission])
 def create_patient(request):
     if request.method == 'POST':
         serializer = PatientSerializer(data=request.data)
@@ -25,6 +32,7 @@ def create_patient(request):
     
 
 @api_view(['GET'])
+@permission_classes([HasRoleAndDataPermission])
 def get_latest_patient_id(request):
     # Fetch the latest patient ID from the database
     latest_patient = Patient.objects.aggregate(Max('patient_id'))
@@ -35,6 +43,8 @@ def get_latest_patient_id(request):
     else:
         new_patient_id = "SD001"
     return Response({"patient_id": new_patient_id}, status=status.HTTP_200_OK)
+
+
 @api_view(['GET'])
 def get_latest_bill_no(request):
     today = datetime.now().strftime('%Y%m%d')  # Get today's date in YYYYMMDD format
@@ -54,6 +64,7 @@ def get_latest_bill_no(request):
 
 @api_view(['GET'])
 @csrf_exempt
+@permission_classes([HasRoleAndDataPermission])
 def get_all_patients(request):
     # Retrieve patients where segment is "B2B"
     patients = Patient.objects.filter(segment="B2B")
@@ -63,6 +74,7 @@ def get_all_patients(request):
 
 
 @api_view(['GET'])
+@permission_classes([HasRoleAndDataPermission])
 def get_patients(request):
     """Fetch patients registered on a given date"""
     date_str = request.GET.get('date', None)  # Get date from request parameters
@@ -77,8 +89,11 @@ def get_patients(request):
         return Response(serializer.data, status=status.HTTP_200_OK)
     except ValueError:
         return Response({"error": "Invalid date format. Use YYYY-MM-DD"}, status=status.HTTP_400_BAD_REQUEST)
+    
 
+@api_view(['GET'])
 @csrf_exempt
+@permission_classes([HasRoleAndDataPermission])
 def patients_by_date(request):
     if request.method == "GET":
         date_str = request.GET.get("date")
@@ -112,8 +127,12 @@ def patients_by_date(request):
             })
 
         return JsonResponse(result, safe=False)
+    
 
+
+@api_view(['GET'])
 @csrf_exempt
+@permission_classes([HasRoleAndDataPermission])
 def get_patient_details(request):
     patient_id = request.GET.get('patient_id')
     phone = request.GET.get('phone')
@@ -154,8 +173,8 @@ def get_patient_details(request):
         return JsonResponse({'error': f'Error fetching patient details: {str(e)}'}, status=500)
     
 
-
-
+@api_view(['GET'])
+@permission_classes([HasRoleAndDataPermission])
 def get_patients_by_date(request):
     start_date = request.GET.get('start_date')
     end_date = request.GET.get('end_date')
@@ -215,19 +234,15 @@ def get_patients_by_date(request):
 
 
 @api_view(['GET'])
+@permission_classes([HasRoleAndDataPermission])
 def patient_overview(request):
     patients = Patient.objects.all()
     serializer = PatientSerializer(patients, many=True)  # Serialize the queryset
     return Response(serializer.data)
 
-
-
-
-
-
-
-
+@api_view(['GET'])
 @csrf_exempt
+@permission_classes([HasRoleAndDataPermission])
 def get_patient_by_id(request, patient_id):
     """
     API endpoint to fetch patient details based on patient ID.

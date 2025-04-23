@@ -10,6 +10,16 @@ from django.db.models import Max
 from ..models import BarcodeTestDetails,Patient
 import logging
 import json
+#auth
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny
+from labbackend.auth.auth import HasRoleAndDataPermission
+from pyauth.auth import HasRoleAndDataPermission
+
+
+@api_view(['GET'])
+@permission_classes([HasRoleAndDataPermission])
 def get_existing_barcode(request):
     patient_id = request.GET.get('patient_id')
     date = request.GET.get('date')
@@ -50,7 +60,8 @@ def get_existing_barcode(request):
 
 
 logger = logging.getLogger(__name__)
-
+@api_view(['GET'])
+@permission_classes([HasRoleAndDataPermission])
 def get_max_barcode(request):
     try:
         max_barcode = 0  # Initialize the maximum barcode value
@@ -86,8 +97,11 @@ def get_max_barcode(request):
     except Exception as e:
         logger.error(f"Error in get_max_barcode: {e}")
         return JsonResponse({'error': 'Failed to generate barcode'}, status=500)
+    
 
+@api_view(["POST"])
 @csrf_exempt
+@permission_classes([HasRoleAndDataPermission])
 def save_barcodes(request):
     if request.method == "POST":
         try:
@@ -130,8 +144,8 @@ def save_barcodes(request):
         except Exception as e:
             return JsonResponse({'error': str(e)}, status=400)
         
-
-
+@api_view(["GET"])
+@permission_classes([HasRoleAndDataPermission])
 def get_barcode_by_date(request):
     date = request.GET.get('date')  # Expecting 'YYYY-MM-DD'
     if date:
@@ -187,8 +201,8 @@ def get_barcode_by_date(request):
     return JsonResponse({'error': 'Date parameter is required.'}, status=400)
 
 
-
-
+@api_view(["GET"])
+@permission_classes([HasRoleAndDataPermission])
 def check_barcode(request):
     patient_id = request.GET.get('patient_id')
     date = request.GET.get('date')
