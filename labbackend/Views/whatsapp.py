@@ -4,11 +4,22 @@ from django.core.files.storage import default_storage
 from pymongo import MongoClient
 from bson.objectid import ObjectId
 from django.views.decorators.csrf import csrf_exempt
+import json
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+#auth
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny
+from pyauth.auth import HasRoleAndDataPermission
 # MongoDB Connection
 client = MongoClient("mongodb://admin:ifS2nTs6vm@103.205.141.208:27017/Lab?authSource=admin")
 db = client["Lab"]
 fs = gridfs.GridFS(db)
+
+@api_view(['POST'])
 @csrf_exempt
+@permission_classes([HasRoleAndDataPermission])
 def upload_pdf_to_gridfs(request):
     if request.method == "POST" and request.FILES.get("file"):
         file = request.FILES["file"]
@@ -19,7 +30,9 @@ def upload_pdf_to_gridfs(request):
 from django.http import HttpResponse
 from bson import ObjectId
 
+@api_view(['GET'])
 @csrf_exempt
+@permission_classes([HasRoleAndDataPermission])
 def get_pdf_from_gridfs(request, file_id):
     try:
         file = fs.get(ObjectId(file_id))
@@ -30,19 +43,9 @@ def get_pdf_from_gridfs(request, file_id):
         return JsonResponse({"error": "File not found"}, status=404)
 
 
-import json
-from twilio.rest import Client
-from django.http import JsonResponse
-import os
-
-TWILIO_ACCOUNT_SID = "ACe1d37f2342c44648499add958166abe2"
-TWILIO_AUTH_TOKEN = "5ca7ffa9ca23cf7849cc94f752717d7d"
-TWILIO_WHATSAPP_NUMBER = "whatsapp:+14155238886"  # Twilio Sandbox Number
-import json
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-
+@api_view(['POST'])
 @csrf_exempt
+@permission_classes([HasRoleAndDataPermission])
 def send_whatsapp_message(request):
     if request.method == "POST":
         data = json.loads(request.body)

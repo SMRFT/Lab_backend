@@ -1,497 +1,56 @@
 from rest_framework.response import Response
-from django.http import JsonResponse, HttpResponse
+from django.http import JsonResponse
+from datetime import datetime
 from django.views.decorators.http import require_http_methods
-from django.views.decorators.csrf import csrf_exempt
 from rest_framework.decorators import api_view
-from rest_framework import viewsets, status
-from datetime import datetime, timedelta
-from django.db.models import Max
+from rest_framework import  status
 from urllib.parse import quote_plus
 from pymongo import MongoClient
-from django.views.decorators.http import require_GET
-from django.forms.models import model_to_dict
-from django.shortcuts import get_object_or_404
-from django.utils.dateparse import parse_date
-import json
 
-from .serializers import RegisterSerializer
-
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
 from rest_framework import status
 from django.views.decorators.csrf import csrf_exempt
-from .models import Register
-from .serializers import RegisterSerializer
-
-from .serializers import RegisterSerializer
-
-
-from .serializers import RegisterSerializer
-@api_view(['GET', 'POST', 'PUT'])
-@csrf_exempt
-def registration(request):
-    if request.method == 'POST':
-        # Handle Registration
-        name = request.data.get('name')
-        role = request.data.get('role')
-        password = request.data.get('password')
-        confirm_password = request.data.get('confirmPassword')
-        if password != confirm_password:
-            return Response({"error": "Passwords do not match"}, status=status.HTTP_400_BAD_REQUEST)
-        if Register.objects.filter(name=name, role=role).exists():
-            return Response({"error": "User with this name and role already exists"}, status=status.HTTP_400_BAD_REQUEST)
-        Register.objects.create(name=name, role=role, password=password)
-        return Response({"message": "Registration successful!"}, status=status.HTTP_201_CREATED)
-    
-    elif request.method == 'PUT':
-        name = request.data.get('name')
-        role = request.data.get('role')
-        old_password = request.data.get('oldPassword')
-        new_password = request.data.get('password')
-        confirm_password = request.data.get('confirmPassword')
-        
-        if new_password != confirm_password:
-            return Response({"error": "New passwords do not match"}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            password = quote_plus('Smrft@2024')
-            client = MongoClient(
-                f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-                tls=True,
-                tlsCAFile=certifi.where()
-            )
-            db = client.Lab
-            collection = db['labbackend_register']
-            
-            # Find the user
-            user = collection.find_one({"name": name, "role": role})
-
-            if not user:
-                return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
-            
-            # Verify old password
-            if user.get('password') != old_password:
-                return Response({"error": "Incorrect current password"}, status=status.HTTP_400_BAD_REQUEST)
-            
-            # Update password
-            result = collection.update_one(
-                {"name": name, "role": role},
-                {"$set": {"password": new_password}}
-            )
-
-            if result.matched_count == 0:
-                return Response({"error": "No matching user found"}, status=status.HTTP_404_NOT_FOUND)
-
-            if result.modified_count == 1:
-                return Response({"message": "Password changed successfully"}, status=status.HTTP_200_OK)
-            else:
-                return Response({"error": "Password update failed"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-        except Exception as e:
-            return Response({"error": f"Database error: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        finally:
-            if 'client' in locals():
-                client.close()
-
-    elif request.method == 'GET':
-        # Handle fetching users with the role "Sales Person"
-        sales_persons = Register.objects.filter(role='Sales Person')
-        serializer = RegisterSerializer(sales_persons, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
-   
-
-from .models import Register
-@api_view(['POST'])
-def login(request):
-    name = request.data.get('name')
-    password = request.data.get('password')
-    try:
-        user = Register.objects.get(name=name)
-        if user.password == password:
-            return Response({
-                "message": f"Login successful as {user.role}, {user.name}",
-                "role": user.role,
-                "name": user.name
-            }, status=status.HTTP_200_OK)
-        else:
-            return Response({"error": "Invalid password"}, status=status.HTTP_401_UNAUTHORIZED)
-    except Register.DoesNotExist:
-        return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
-   
-
-from .serializers import PatientSerializer
-@api_view(['POST'])
-@csrf_exempt
-def create_patient(request):
-    if request.method == 'POST':
-        serializer = PatientSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-   
-
-@api_view(['GET'])
-def get_latest_bill_no(request):
-    today = datetime.now().strftime('%Y%m%d')  # Get today's date in YYYYMMDD format
-    # Get the latest bill_no that starts with today's date
-    last_bill = Patient.objects.filter(bill_no__startswith=today).aggregate(Max('bill_no'))
-    if last_bill['bill_no__max']:
-        # Extract the numeric part of the last bill number and increment it
-        last_id = int(last_bill['bill_no__max'][-4:])  # Extract the last 4 digits
-        next_id = last_id + 1
-    else:
-        # Start with 0001 if no bills exist for today
-        next_id = 1
-    # Generate the new bill number
-    new_bill_no = f"{today}{next_id:04d}"  # Format: YYYYMMDD0001
-    return Response({"bill_no": new_bill_no}, status=status.HTTP_200_OK)
-
-
-from datetime import datetime
-from django.http import JsonResponse
-from .models import BarcodeTestDetails
-
-def get_existing_barcode(request):
-    patient_id = request.GET.get('patient_id')
-    date = request.GET.get('date')
-    bill_no = request.GET.get('bill_no')
-
-    if not patient_id and not bill_no:
-        return JsonResponse({'error': 'Either Patient ID or Bill No is required.'}, status=400)
-
-    try:
-        parsed_date = datetime.strptime(date, '%Y-%m-%d').date() if date else None
-        query_filter = {}
-
-        if patient_id:
-            query_filter['patient_id'] = patient_id
-        if bill_no:
-            query_filter['bill_no'] = bill_no
-        if parsed_date:
-            query_filter['date'] = parsed_date
-
-        barcode_record = BarcodeTestDetails.objects.filter(**query_filter).first()
-
-        if barcode_record:
-            return JsonResponse({
-                'patient_id': barcode_record.patient_id,
-                'patientname': barcode_record.patientname,
-                'age': barcode_record.age,
-                'gender': barcode_record.gender,
-                'date': barcode_record.date,
-                'bill_no': barcode_record.bill_no,
-                'tests': barcode_record.tests,  # Ensure tests are serialized correctly
-                'barcode': barcode_record.barcode
-            }, status=200)
-
-        return JsonResponse({'message': 'No barcode found for the given details.'}, status=404)
-
-    except ValueError:
-        return JsonResponse({'error': 'Invalid date format. Use YYYY-MM-DD.'}, status=400)
-
-
-
-
-
-
 import logging
-from django.http import JsonResponse
-from .models import BarcodeTestDetails  # Replace with your actual model import
-
-logger = logging.getLogger(__name__)
-
-def get_max_barcode(request):
-    try:
-        max_barcode = 0  # Initialize the maximum barcode value
-        # Retrieve all 'tests' fields from the database
-        all_tests = BarcodeTestDetails.objects.values_list('tests', flat=True)
-        for tests in all_tests:
-            try:
-                # Parse the tests JSON string if needed
-                if isinstance(tests, str):  
-                    tests = eval(tests)  # Convert string representation to a list of dicts (use json.loads if stored as JSON)
-
-                if isinstance(tests, list):  # Ensure it's a list of test dictionaries
-                    for test in tests:
-                        barcode = test.get("barcode", "")
-                        if barcode:
-                            # Extract numeric part from the barcode
-                            numeric_part = ''.join(filter(str.isdigit, barcode))
-                            if numeric_part.isdigit():
-                                numeric_value = int(numeric_part)
-                                max_barcode = max(max_barcode, numeric_value)
-            except Exception as inner_exception:
-                logger.warning(f"Error processing tests: {inner_exception}")
-                continue
-
-        # Increment the max barcode value by 1
-        next_barcode = max_barcode + 1
-
-        # Format as a zero-padded 6-digit string
-        formatted_next_barcode = f"{next_barcode:06d}"
-        logger.debug(f"Next barcode generated: {formatted_next_barcode}")
-        return JsonResponse({'next_barcode': formatted_next_barcode}, status=200)
-
-    except Exception as e:
-        logger.error(f"Error in get_max_barcode: {e}")
-        return JsonResponse({'error': 'Failed to generate barcode'}, status=500)
-
-
-
-
-
-
-   
-
-from datetime import datetime
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
+from datetime import datetime, timedelta
+from collections import defaultdict
+from django.utils import timezone  # Import Django's timezone module
+import re
+from django.core.mail import EmailMessage
+from django.conf import settings  # To access the settings for DEFAULT_FROM_EMAIL
+  # Import your model
+from django.utils.timezone import make_aware
+from datetime import datetime, date  # Import `date` separately
+import pytz
+from rest_framework.views import APIView
+import traceback
+from django.conf import settings  # To access the settings for DEFAULT_FROM_EMAIL
 import json
+import certifi
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny
+from pyauth.auth import HasRoleAndDataPermission
+#Models
+from .models import Patient
+from .models import SampleStatus
+from .models import TestValue
+from .models import SampleStatus
 from .models import BarcodeTestDetails
 
-@csrf_exempt
-def save_barcodes(request):
-    if request.method == "POST":
-        try:
-            data = json.loads(request.body)
-            bill_no = data.get('bill_no')
+#Serializer
+from .serializers import SampleStatusSerializer
+from .serializers import TestValueSerializer
 
-            # Check if bill_no already exists
-            if BarcodeTestDetails.objects.filter(bill_no=bill_no).exists():
-                return JsonResponse({'error': 'Bill number already exists!'}, status=400)
+import os
+from dotenv import load_dotenv
 
-            patient_id = data.get('patient_id')
-            patientname = data.get('patientname')
-            age = data.get('age')
-            gender = data.get('gender')
-            segment = data.get('segment')
-            sample_collector = data.get('sample_collector')
-            barcode = data.get('barcode')
-            date = data.get('date')  # Date as a string
-            tests = data.get('tests')
-
-            # Convert string to date object if needed
-            if date:
-                date = datetime.strptime(date, "%d/%m/%Y").date()  # Match format 'DD/MM/YYYY'
-
-            # Save patient details
-            BarcodeTestDetails.objects.create(
-                patient_id=patient_id,
-                patientname=patientname,
-                age=age,
-                gender=gender,
-                date=date,
-                segment=segment,
-                sample_collector=sample_collector,
-                barcode=barcode,
-                bill_no=bill_no,
-                tests=tests,
-            )
-            return JsonResponse({'message': 'Barcodes saved successfully!'}, status=201)
-
-        except Exception as e:
-            return JsonResponse({'error': str(e)}, status=400)
-
-   
-
-from .serializers import PatientSerializer
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
-from django.views.decorators.csrf import csrf_exempt
-from .models import Patient  # Ensure you import the Patient model
-
-@api_view(['GET'])
-@csrf_exempt
-def get_all_patients(request):
-    # Retrieve patients where segment is "B2B"
-    patients = Patient.objects.filter(segment="B2B")
-
-    serializer = PatientSerializer(patients, many=True)
-    return Response(serializer.data, status=status.HTTP_200_OK)
+load_dotenv()
 
 
-
-@api_view(['GET'])
-def get_latest_patient_id(request):
-    # Fetch the latest patient ID from the database
-    latest_patient = Patient.objects.aggregate(Max('patient_id'))
-    # If there's a patient ID, increment it, otherwise start with SD001
-    if latest_patient['patient_id__max']:
-        current_id = int(latest_patient['patient_id__max'].replace('SD', ''))
-        new_patient_id = f"SD{str(current_id + 1).zfill(3)}"
-    else:
-        new_patient_id = "SD001"
-    return Response({"patient_id": new_patient_id}, status=status.HTTP_200_OK)
-
-
-@csrf_exempt
-def get_patient_details(request):
-    patient_id = request.GET.get('patient_id')
-    phone = request.GET.get('phone')
-    patientname = request.GET.get('patientname')
-
-    try:
-        patient = None
-
-        # Check for patient_id
-        if patient_id:
-            patient = Patient.objects.filter(patient_id=patient_id).first()
-        # Check for phone
-        elif phone:
-            patient = Patient.objects.filter(phone=phone).first()
-        # Check for patientname (case-insensitive, partial match)
-        elif patientname:
-            patient = Patient.objects.filter(patientname__icontains=patientname).first()
-        else:
-            return JsonResponse({'error': 'Please provide either patient_id, phone, or patientname'}, status=400)
-
-        # If patient is found, return patient data
-        if patient:
-            patient_data = {
-                'patient_id': patient.patient_id,
-                'patientname': patient.patientname,
-                'age': patient.age,
-                'gender': patient.gender,
-                'phone': patient.phone,
-                'address': patient.address,
-                'email': patient.email,
-                'bill_no':patient.bill_no,
-            }
-            return JsonResponse(patient_data)
-        else:
-            return JsonResponse({'error': 'Patient not found'}, status=404)
-   
-    except Exception as e:
-        return JsonResponse({'error': f'Error fetching patient details: {str(e)}'}, status=500)
-   
-
-from django.http import JsonResponse
-from .models import Patient
-from django.forms.models import model_to_dict
-from datetime import datetime, timedelta
-
-def get_patients_by_date(request):
-    start_date = request.GET.get('start_date')
-    end_date = request.GET.get('end_date')
-
-    if start_date and end_date:
-        try:
-            # Convert string to datetime
-            start_date_parsed = datetime.strptime(start_date, '%Y-%m-%d')
-            end_date_parsed = datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1) - timedelta(seconds=1)  # Include the entire end date
-
-            # Adjust filter based on field type
-            patients = Patient.objects.filter(date__gte=start_date_parsed, date__lte=end_date_parsed)
-            
-            patient_data = []
-            
-            for patient in patients:
-                patient_dict = model_to_dict(patient)
-                
-                # Handle testname which could be a string or already a list
-                tests = patient.testname
-                
-                # If tests is a string, parse it as JSON
-                if isinstance(tests, str):
-                    try:
-                        tests = json.loads(tests)
-                    except json.JSONDecodeError:
-                        # Skip patients with invalid JSON in testname
-                        continue
-                
-                # Filter out tests that are refunded or cancelled
-                valid_tests = []
-                for test in tests:
-                    # Check if refund or cancellation keys exist and are True
-                    if not test.get('refund', False) and not test.get('cancellation', False):
-                        valid_tests.append(test)
-                
-                # If no valid tests remain after filtering, skip this patient entirely
-                if not valid_tests:
-                    continue
-                
-                # Replace the testname with filtered valid tests
-                patient_dict['testname'] = valid_tests
-                
-                # Recalculate total amount based on valid tests only
-                total_amount = sum(float(test.get('amount', 0)) for test in valid_tests)
-                patient_dict['totalAmount'] = str(total_amount)
-                
-                patient_data.append(patient_dict)
-            
-            # Return the filtered patient data
-            return JsonResponse({'data': patient_data}, safe=False)
-            
-        except ValueError:
-            return JsonResponse({'error': 'Invalid date format. Use YYYY-MM-DD.'}, status=400)
-
-    return JsonResponse({'error': 'Both start_date and end_date parameters are required.'}, status=400)
-
-
-
-
-def get_received_samples(request):
-    # Get patient_id and date from the query parameters
-    patient_id = request.GET.get('patient_id')
-    date_str = request.GET.get('date')
-
-    if not patient_id or not date_str:
-        return JsonResponse({'error': 'Missing patient_id or date parameter'}, status=400)
-
-    try:
-        # Fetch SampleStatus entries for the given patient_id
-        received_samples = SampleStatus.objects.filter(patient_id=patient_id)
-
-        test_data = []
-        for sample in received_samples:
-            # Check if testdetails is a string or a list
-            if isinstance(sample.testdetails, str):
-                try:
-                    test_list = json.loads(sample.testdetails)  # Parse JSON string
-                except json.JSONDecodeError:
-                    return JsonResponse({'error': 'Invalid testdetails format'}, status=400)
-            elif isinstance(sample.testdetails, list):
-                test_list = sample.testdetails  # Use as-is
-            else:
-                continue  # Skip invalid testdetails format
-
-            for test_item in test_list:
-                testname = test_item.get('testname')
-                samplestatus = test_item.get('samplestatus')
-
-                # Only include tests with 'Received' status and matching date
-                if samplestatus == 'Received' and str(sample.date) == date_str:
-                    test_info = {
-                        "patient_id": sample.patient_id,
-                        "patientname": sample.patientname,
-                        "testname": testname,
-                        "samplestatus": samplestatus,
-                        "date": sample.date,
-                        "segment": sample.segment
-                    }
-                    test_data.append(test_info)
-
-        return JsonResponse({'data': test_data})
-
-    except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
-
-from collections import defaultdict
 def convert_to_float(value):
     try:
         return float(value)
     except (ValueError, TypeError):
         return 0.0
-
-from collections import defaultdict
-import json
-from datetime import datetime, timedelta
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from django.http import JsonResponse
 
 def convert_to_float(value):
     try:
@@ -500,6 +59,7 @@ def convert_to_float(value):
         return 0.0
 
 @api_view(['GET'])
+@permission_classes([HasRoleAndDataPermission])
 def patient_report(request):
     start_date_str = request.GET.get('start_date')
     end_date_str = request.GET.get('end_date')
@@ -515,11 +75,7 @@ def patient_report(request):
     
     # MongoDB Connection Setup
     password = quote_plus('Smrft@2024')
-    client = MongoClient(
-        f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-        tls=True,
-        tlsCAFile=certifi.where()
-    )
+    client = MongoClient(os.getenv('DB_HOST'))
     db = client.Lab
     patients_collection = db["labbackend_patient"]  # MongoDB collection
     
@@ -680,25 +236,15 @@ def patient_report(request):
     return Response({'report': report_list})
 
 
-
-
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-from pymongo import MongoClient
-import json
-import certifi
-from urllib.parse import quote_plus
+@api_view(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])
 @csrf_exempt  # Allow GET, POST, and PATCH requests without CSRF protection
+@permission_classes([HasRoleAndDataPermission])
 def get_test_details(request):
     try:
         # Securely encode password
         password = quote_plus('Smrft@2024')
         # MongoDB connection with TLS certificate
-        client = MongoClient(
-            f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-            tls=True,  # Enable TLS/SSL
-            tlsCAFile=certifi.where()  # Use certifi's CA certificate bundle
-        )
+        client = MongoClient(os.getenv('DB_HOST'))
         db = client.Lab  # Database name
         collection = db.labbackend_testdetails  # Collection name
         if request.method == 'GET':
@@ -744,18 +290,15 @@ def get_test_details(request):
         print("Error:", e)
         return JsonResponse({'error': 'An error occurred'}, status=500)
 
-
+@api_view(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])
 @csrf_exempt
+@permission_classes([HasRoleAndDataPermission])
 def handle_patch_request(request):
     try:
         # MongoDB connection setup inside the function
         password = quote_plus('Smrft@2024')
         # MongoDB connection with TLS certificate
-        client = MongoClient(
-            f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-            tls=True,  # Enable TLS/SSL
-            tlsCAFile=certifi.where()  # Use certifi's CA certificate bundle
-        )
+        client = MongoClient(os.getenv('DB_HOST'))
         db = client.Lab  # Database name
         collection = db.labbackend_testdetails  # Collection name
         data = json.loads(request.body.decode('utf-8'))
@@ -777,7 +320,7 @@ def handle_patch_request(request):
         print("Error:", e)
         return JsonResponse({'error': 'An error occurred while updating data'}, status=500)
 
-
+@api_view(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])
 @csrf_exempt
 def get_test_parameters(request, test_name):
     try:
@@ -785,11 +328,7 @@ def get_test_parameters(request, test_name):
         password = quote_plus('Smrft@2024')
 
         # MongoDB connection with TLS certificate
-        client = MongoClient(
-            f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-            tls=True,  # Enable TLS/SSL
-            tlsCAFile=certifi.where()  # Use certifi's CA certificate bundle
-        )
+        client = MongoClient(os.getenv('DB_HOST'))
 
         db = client.Lab  # Database name
         collection = db.labbackend_testdetails
@@ -802,72 +341,16 @@ def get_test_parameters(request, test_name):
     except Exception as e:
         print("Error fetching parameters:", e)
         return JsonResponse({"error": "Failed to fetch parameters"}, status=500)
+    
 
 
-from .models import SampleCollector
-from .serializers import SampleCollectorSerializer
-@api_view(['GET', 'POST'])
-def sample_collector(request):
-    if request.method == 'POST':
-        serializer = SampleCollectorSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    elif request.method == 'GET':
-        collectors = SampleCollector.objects.all()
-        serializer = SampleCollectorSerializer(collectors, many=True)
-        return Response(serializer.data)
-
-
-# from .models import ClinicalName
-# from .serializers import ClinicalNameSerializer
-# @api_view(['GET', 'POST'])
-# def clinical_name(request):
-#     if request.method == 'POST':
-#         serializer = ClinicalNameSerializer(data=request.data)
-#         if serializer.is_valid():
-#             serializer.save()
-#             return Response(serializer.data, status=status.HTTP_201_CREATED)
-#         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-#     elif request.method == 'GET':
-#         organisations = ClinicalName.objects.all()
-#         serializer = ClinicalNameSerializer(organisations, many=True)
-#         return Response(serializer.data)
-   
-# def get_last_referrer_code(request):
-#     last_clinical = ClinicalName.objects.order_by('-referrerCode').first()
-#     if last_clinical:
-#         return JsonResponse({'referrerCode': last_clinical.referrerCode})
-#     return JsonResponse({'referrerCode': 'SD0000'})
-   
-
-from .models import RefBy
-from .serializers import RefBySerializer
-@api_view(['GET', 'POST'])
-def refby(request):
-    if request.method == 'POST':
-        serializer = RefBySerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    elif request.method == 'GET':
-        collectors = RefBy.objects.all()
-        serializer = RefBySerializer(collectors, many=True)
-        return Response(serializer.data)
-
-
-from .models import Patient
+@api_view(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])
+@permission_classes([HasRoleAndDataPermission])
 def compare_test_details(request):
     # MongoDB connection setup
     password = quote_plus('Smrft@2024')
         # MongoDB connection with TLS certificate
-    client = MongoClient(
-            f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-            tls=True,  # Enable TLS/SSL
-            tlsCAFile=certifi.where()  # Use certifi's CA certificate bundle
-        )
+    client = MongoClient(os.getenv('DB_HOST'))
     db = client.Lab  # Database name
     collection = db.labbackend_testdetails  # Collection name
     # Retrieve the date and patient ID from the request
@@ -936,22 +419,8 @@ def compare_test_details(request):
     # Return all collected test details in the response
     return JsonResponse({'data': test_data})
 
-
-
-
-
-
-
-
-from .models import SampleStatus
-from .serializers import SampleStatusSerializer
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
-from datetime import datetime, timedelta
-import json
-
 @api_view(['GET'])
+@permission_classes([HasRoleAndDataPermission])
 def get_samplestatus_testvalue(request):
     try:
         # Get the date from the query parameter
@@ -992,18 +461,8 @@ def get_samplestatus_testvalue(request):
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-
-
-
-
-
-
-
- 
-
-from .serializers import TestValueSerializer
-from .models import Patient
 @api_view(['GET', 'POST','PATCH'])
+@permission_classes([HasRoleAndDataPermission])
 def save_test_value(request):
     if request.method == 'GET':
         patient_id = request.GET.get('patient_id')
@@ -1077,11 +536,7 @@ def save_test_value(request):
             # MongoDB connection
         password = quote_plus('Smrft@2024')
         # MongoDB connection with TLS certificate
-        client = MongoClient(
-            f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-            tls=True,  # Enable TLS/SSL
-            tlsCAFile=certifi.where()  # Use certifi's CA certificate bundle
-        )
+        client = MongoClient(os.getenv('DB_HOST'))
         db = client.Lab  # Database name
         collection = db.labbackend_testvalue
         # Extract parameters from the request
@@ -1139,16 +594,14 @@ def save_test_value(request):
             return Response({"message": "Test details updated successfully."}, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
 @api_view(['PATCH'])
+@permission_classes([HasRoleAndDataPermission])
 def update_test_value(request):
     # MongoDB connection
     password = quote_plus('Smrft@2024')
     # MongoDB connection with TLS certificate
-    client = MongoClient(
-            f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-            tls=True,  # Enable TLS/SSL
-            tlsCAFile=certifi.where()  # Use certifi's CA certificate bundle
-        )
+    client = MongoClient(os.getenv('DB_HOST'))
     db = client.Lab  # Database name
     collection = db.labbackend_testvalue
     try:
@@ -1196,31 +649,20 @@ def update_test_value(request):
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-from datetime import datetime
-import pytz
-import json
-from pymongo import MongoClient
-import certifi
-from urllib.parse import quote_plus
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
+
 
 # Define IST timezone
 TIME_ZONE = 'Asia/Kolkata'
 IST = pytz.timezone(TIME_ZONE)
 
 @api_view(['PATCH'])
+@permission_classes([HasRoleAndDataPermission])
 def update_dispatch_status(request, patient_id):
     # MongoDB connection
     password = quote_plus('Smrft@2024')
 
     # MongoDB connection with TLS certificate
-    client = MongoClient(
-        f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-        tls=True,  # Enable TLS/SSL
-        tlsCAFile=certifi.where()  # Use certifi's CA certificate bundle
-    )
+    client = MongoClient(os.getenv('DB_HOST'))
 
     db = client.Lab  # Database name
     collection = db.labbackend_testvalue
@@ -1259,9 +701,8 @@ def update_dispatch_status(request, patient_id):
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
-from .models import  TestValue
 @api_view(['GET'])
+@permission_classes([HasRoleAndDataPermission])
 def get_test_report(request):
     day = request.GET.get('day')
     month = request.GET.get('month')
@@ -1286,7 +727,8 @@ def get_test_report(request):
     return Response({"data": report_data})
 
 
-
+@api_view(['GET'])
+@permission_classes([HasRoleAndDataPermission])
 def get_test_values(request):
     # Get date from request parameters
     date = request.GET.get('date')
@@ -1331,6 +773,7 @@ def get_test_values(request):
 
 
 @api_view(['GET'])
+@permission_classes([HasRoleAndDataPermission])
 def test_values(request):
     # Get the date parameter from the request
     date_str = request.GET.get('date')
@@ -1347,25 +790,14 @@ def test_values(request):
         return Response({"error": "Invalid date format"}, status=400)
 
 
-from django.utils import timezone  # Import Django's timezone module
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_http_methods
-from pymongo import MongoClient
-import json
-import certifi
-from urllib.parse import quote_plus
+@api_view(["PATCH"])
 @csrf_exempt
-@require_http_methods(["PATCH"])
+@permission_classes([HasRoleAndDataPermission])
 def approve_test_detail(request, patient_id, test_index):
     # MongoDB connection
     password = quote_plus('Smrft@2024')
     # MongoDB connection with TLS certificate
-    client = MongoClient(
-        f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-        tls=True,  # Enable TLS/SSL
-        tlsCAFile=certifi.where()  # Use certifi's CA certificate bundle
-    )
+    client = MongoClient(os.getenv('DB_HOST'))
     db = client.Lab  # Database name
     collection = db.labbackend_testvalue  # Your collection name
     # Log the incoming request body
@@ -1411,17 +843,15 @@ def approve_test_detail(request, patient_id, test_index):
             return JsonResponse({"error": "Failed to update test detail."}, status=500)
     else:
         return JsonResponse({"error": "Invalid test index."}, status=400)
+    
+@api_view(['PATCH'])
 @csrf_exempt
-@require_http_methods(["PATCH"])
+@permission_classes([HasRoleAndDataPermission])
 def rerun_test_detail(request, patient_id, test_index):
     # MongoDB connection
     password = quote_plus('Smrft@2024')
         # MongoDB connection with TLS certificate
-    client = MongoClient(
-            f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-            tls=True,  # Enable TLS/SSL
-            tlsCAFile=certifi.where()  # Use certifi's CA certificate bundle
-        )
+    client = MongoClient(os.getenv('DB_HOST'))
     db = client.Lab  # Database name
     collection = db.labbackend_testvalue  # Your collection name
     """Rerun the test detail at the given index for the specified patient."""
@@ -1463,16 +893,13 @@ def rerun_test_detail(request, patient_id, test_index):
 
 @csrf_exempt
 @api_view(['PATCH'])
+@permission_classes([HasRoleAndDataPermission])
 def update_test_detail(request, patient_id):
     # MongoDB connection
     password = quote_plus('Smrft@2024')
 
         # MongoDB connection with TLS certificate
-    client = MongoClient(
-            f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-            tls=True,  # Enable TLS/SSL
-            tlsCAFile=certifi.where()  # Use certifi's CA certificate bundle
-        )
+    client = MongoClient(os.getenv('DB_HOST'))
 
     db = client.Lab  # Database name
     collection = db.labbackend_testvalue  # Your collection name
@@ -1515,369 +942,8 @@ def update_test_detail(request, patient_id):
 
 
 
-from django.http import JsonResponse
-from .models import SampleStatus, BarcodeTestDetails
-from django.forms.models import model_to_dict
-import json
-def get_samplepatients_by_date(request):
-    date = request.GET.get('date')
-    if not date:
-        return JsonResponse({'error': 'Date parameter is required.'}, status=400)
-    try:
-        # Parse the input date with time (timezone-aware or naive)
-        parsed_date = datetime.fromisoformat(date)
-        # Get all patient IDs in SampleStatus with the given exact date and test details
-        sample_status_ids = SampleStatus.objects.filter(date__gte=parsed_date, date__lt=parsed_date + timedelta(days=1)).values_list('patient_id', 'testdetails')
-        # Prepare a set of patient_id-test combinations in SampleStatus
-        existing_samples = set()
-        for patient_id, testdetails in sample_status_ids:
-            for test in testdetails:
-                existing_samples.add((patient_id, test['testname']))
-        # Filter patients that are not in SampleStatus
-        patients = BarcodeTestDetails.objects.filter(date__gte=parsed_date, date__lt=parsed_date + timedelta(days=1)).exclude(
-            patient_id__in=[item[0] for item in existing_samples]
-        )
-        # Check if test names overlap for each patient
-        filtered_patients = []
-        for patient in patients:
-            patient_tests = {test['testname'] for test in patient.tests}
-            if not any((patient.patient_id, test) in existing_samples for test in patient_tests):
-                filtered_patients.append(patient)
-        # Serialize the filtered patients
-        patient_data = [model_to_dict(patient) for patient in filtered_patients]
-        return JsonResponse({'data': patient_data}, safe=False)
-    except ValueError:
-        return JsonResponse({'error': 'Invalid date format. Use YYYY-MM-DDTHH:MM:SS.'}, status=400)
-
-
-
-
-
-
-
-   
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-import json
-from .models import SampleStatus
-@csrf_exempt
-def sample_status(request):
-    if request.method == 'POST':
-        try:
-            data = json.loads(request.body)
-            for entry in data:
-                patient_id = entry['patient_id']
-                patientname = entry['patientname']
-                barcode = entry['barcode']
-                age = entry['age']
-                segment = entry['segment']
-                date = entry.get('date', '')
-                testdetails = entry.get('testdetails', [])
-                # Check if an entry with the same date, patient_id, patientname, and testdetails exists
-                existing_entry = SampleStatus.objects.filter(
-                    patient_id=patient_id,
-                    patientname=patientname,
-                    barcode=barcode,
-                    age=age,
-                    segment=segment,
-                    date=date,
-                    testdetails=testdetails
-                ).first()
-                if existing_entry:
-                    return JsonResponse({'message': 'Data already exists'}, status=409)
-                # If no existing entry, save the new one
-                patient = SampleStatus(
-                    patient_id=patient_id,
-                    patientname=patientname,
-                    barcode=barcode,
-                    age=age,
-                    segment=segment,
-                    date=date,
-                    testdetails=testdetails
-                )
-                patient.save()
-            return JsonResponse({'message': 'Data saved successfully'}, status=201)
-        except Exception as e:
-            return JsonResponse({'error': str(e)}, status=400)
-    return JsonResponse({'error': 'Invalid request method'}, status=405)
-
-
-
-
-
-
-
-
-from django.utils import timezone  # Import Django's timezone module
-from django.http import JsonResponse
-from pymongo import MongoClient
-import json
-import certifi
-from urllib.parse import quote_plus
-from django.views.decorators.csrf import csrf_exempt
-
-from django.utils import timezone  # Import Django's timezone module
-from django.http import JsonResponse
-from pymongo import MongoClient
-import json
-import certifi
-from urllib.parse import quote_plus
-from django.views.decorators.csrf import csrf_exempt
-@csrf_exempt
-def update_sample_status(request, patient_id):
-    password = quote_plus('Smrft@2024')
-    # MongoDB connection with TLS certificate
-    client = MongoClient(
-        f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-        tls=True,  # Enable TLS/SSL
-        tlsCAFile=certifi.where()  # Use certifi's CA certificate bundle
-    )
-    db = client.Lab  # Database name
-    collection = db.labbackend_samplestatus
-    if request.method == 'PUT':
-        try:
-            data = json.loads(request.body)  # Parse the incoming JSON data
-            updates = data  # Use updates array directly
-            # Find all patients with the given patient_id in MongoDB
-            patients = collection.find({"patient_id": patient_id})
-            if not patients:
-                return JsonResponse({'error': 'No patients found with the given patient_id'}, status=404)
-            update_count = 0
-            for patient in patients:
-                if isinstance(patient.get('testdetails'), str):
-                    try:
-                        patient['testdetails'] = json.loads(patient['testdetails'])  # Parse JSON string to list
-                    except json.JSONDecodeError:
-                        return JsonResponse({'error': 'Invalid test details format'}, status=400)
-                updated_testdetails = []
-                test_found = False  # Flag to check if the test is found
-                for entry in patient['testdetails']:
-                    if isinstance(entry, dict) and entry.get('testname') in [update['testname'] for update in updates]:
-                        for update in updates:
-                            if entry['testname'] == update['testname']:
-                                entry['samplestatus'] = update['samplestatus']
-                                entry['collectd_by'] = update['collectd_by']
-                                # Store collected time in IST with the desired format
-                                ist_time = timezone.now().astimezone(timezone.get_current_timezone())
-                                # Format the timestamp to the desired format (e.g., '2025-02-14 15:23:45')
-                                formatted_time = ist_time.strftime('%Y-%m-%d %H:%M:%S')  # Use the same format as your first example
-                                if update['samplestatus'] == "Sample Collected":
-                                    entry['samplecollected_time'] = formatted_time
-                                test_found = True
-                        updated_testdetails.append(entry)
-                if not test_found:
-                    continue  # Skip if no test found
-                # Update the testdetails array in MongoDB
-                result = collection.update_one(
-                    {"_id": patient['_id']},
-                    {"$set": {"testdetails": json.dumps(updated_testdetails)}}
-                )
-                if result.modified_count > 0:
-                    update_count += 1
-            if update_count > 0:
-                return JsonResponse({'message': f'Successfully updated sample status for {update_count} patients.'}, status=200)
-            else:
-                return JsonResponse({'error': 'No updates were made'}, status=400)
-        except Exception as e:
-            return JsonResponse({'error': str(e)}, status=400)
-    return JsonResponse({'error': 'Invalid request method'}, status=405)
-
-@csrf_exempt
-def get_sample_collected(request):
-    if request.method == "GET":
-        try:
-            # Fetch all sample statuses
-            samples = SampleStatus.objects.all()
-            patient_data = {}
-            # Prepare the data grouped by patient
-            for sample in samples:
-                # Deserialize testdetails if it's a string
-                if isinstance(sample.testdetails, str):
-                    test_details = json.loads(sample.testdetails)
-                else:
-                    test_details = sample.testdetails
-                # Filter test details based on samplestatus only
-                for detail in test_details:
-                    if detail.get("samplestatus") == "Sample Collected":
-                        # If patient is not already in the dictionary, add them
-                        if sample.patient_id not in patient_data:
-                            patient_data[sample.patient_id] = {
-                                "date":sample.date,
-                                "patient_id": sample.patient_id,
-                                "patientname": sample.patientname,
-                                "barcode": sample.barcode,
-                                "age": sample.age,
-                                "segment": sample.segment,
-                                "testdetails": []
-                            }
-                        # Append the test details
-                        patient_data[sample.patient_id]["testdetails"].append({
-                            "testname": detail.get("testname", "N/A"),
-                            "container": detail.get("container", "N/A"),
-                            "department": detail.get("department", "N/A"),
-                            "samplecollector": detail.get("samplecollector", "N/A"),
-                            "samplestatus": detail.get("samplestatus", "N/A"),
-                            "samplecollected_time": detail.get("samplecollected_time", "N/A"),
-                        })
-            # Convert the dictionary to a list
-            data = list(patient_data.values())
-            # Return the filtered data as a response
-            return JsonResponse({"data": data}, safe=False)
-        except Exception as e:
-            return JsonResponse({"error": str(e)}, status=500)
-
-       
-from datetime import datetime
-from django.utils import timezone  # Import Django's timezone module
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-from pymongo import MongoClient
-import json
-import certifi
-from urllib.parse import quote_plus
-
-from django.utils import timezone  # Import Django's timezone module
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-from pymongo import MongoClient
-import json
-import certifi
-from urllib.parse import quote_plus
-@csrf_exempt
-def update_sample_collected(request, patient_id):
-    # MongoDB connection setup
-    password = quote_plus('Smrft@2024')
-    # MongoDB connection with TLS certificate
-    client = MongoClient(
-        f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-        tls=True,  # Enable TLS/SSL
-        tlsCAFile=certifi.where()  # Use certifi's CA certificate bundle
-    )
-    db = client.Lab  # Database name
-    collection = db.labbackend_samplestatus  # Collection name
-    if request.method == "PUT":
-        try:
-            body = json.loads(request.body)
-            updates = body.get("updates", [])
-            if not updates:
-                return JsonResponse({"error": "Updates are required"}, status=400)
-            # Find the patient sample record
-            patient_sample = collection.find_one({"patient_id": patient_id})
-            if not patient_sample:
-                return JsonResponse({"error": "Sample not found"}, status=404)
-            # Parse testdetails as a Python list
-            testdetails = json.loads(patient_sample.get('testdetails', '[]'))
-            # Apply updates based on testIndex
-            for update in updates:
-                testIndex = update.get("testIndex")
-                new_status = update.get("samplestatus")
-                received_by = update.get("received_by")
-                rejected_by = update.get("rejected_by")
-                outsourced_by = update.get("oursourced_by")
-                remarks = update.get("remarks")  # New field for rejection remarks
-                if testIndex is None or new_status is None:
-                    return JsonResponse({"error": "samplestatus and testIndex are required"}, status=400)
-                # Ensure testIndex is valid
-                if testIndex < 0 or testIndex >= len(testdetails):
-                    return JsonResponse({"error": "Invalid testIndex"}, status=400)
-                test_entry = testdetails[testIndex]
-                # Update the sample status and associated fields
-                test_entry['samplestatus'] = new_status
-                # Get current time in the correct timezone
-                current_time = timezone.now().astimezone(timezone.get_current_timezone())
-                formatted_time = current_time.strftime('%Y-%m-%d %H:%M:%S')  # Format the time
-                if new_status == "Received":
-                    test_entry['received_time'] = formatted_time
-                    test_entry['received_by'] = received_by
-                elif new_status == "Rejected":
-                    test_entry['rejected_time'] = formatted_time
-                    test_entry['rejected_by'] = rejected_by
-                    test_entry['remarks'] = remarks  # Add rejection remarks
-                elif new_status == "Outsource":
-                    test_entry['oursourced_time'] = formatted_time
-                    test_entry['oursourced_by'] = outsourced_by
-            # Save changes back to the database
-            collection.update_one(
-                {"patient_id": patient_id},
-                {"$set": {"testdetails": json.dumps(testdetails)}}  # Re-serialize testdetails as JSON
-            )
-            return JsonResponse({"message": "Sample status updated successfully"}, status=200)
-        except Exception as e:
-            return JsonResponse({"error": str(e)}, status=500)
-
-
 @api_view(['GET'])
-def patient_overview(request):
-    patients = Patient.objects.all()
-    serializer = PatientSerializer(patients, many=True)  # Serialize the queryset
-    return Response(serializer.data)
-
-
-
-   
-from .models import Patient  # Adjust the import based on your project structure
-from .models import Patient  # Adjust the import based on your project structure
-def get_barcode_by_date(request):
-    date = request.GET.get('date')  # Expecting 'YYYY-MM-DD'
-    if date:
-        try:
-            parsed_date = datetime.strptime(date, '%Y-%m-%d')  # Parse the provided date
-            start_of_day = datetime.combine(parsed_date, datetime.min.time())  # 2025-01-23 00:00:00
-            end_of_day = datetime.combine(parsed_date, datetime.max.time())  # 2025-01-23 23:59:59.999999
-           
-            # Query patients with a range filter
-            patients = Patient.objects.filter(date__gte=start_of_day, date__lte=end_of_day)
-           
-            # Process each patient to filter out refunded or cancelled tests
-            patient_data = []
-            for patient in patients:
-                patient_dict = model_to_dict(patient)
-                
-                # Handle testname which could be a string or already a list
-                tests = patient.testname
-                
-                # If tests is a string, parse it as JSON
-                if isinstance(tests, str):
-                    try:
-                        tests = json.loads(tests)
-                    except json.JSONDecodeError:
-                        # Skip patients with invalid JSON in testname
-                        continue
-                
-                # Filter out tests that are refunded or cancelled
-                valid_tests = []
-                for test in tests:
-                    # Check if refund or cancellation keys exist and are True
-                    if not test.get('refund', False) and not test.get('cancellation', False):
-                        valid_tests.append(test)
-                
-                # If no valid tests remain after filtering, skip this patient entirely
-                if not valid_tests:
-                    continue
-                
-                # Replace the testname with filtered valid tests
-                patient_dict['testname'] = valid_tests
-                
-                # Recalculate total amount based on valid tests only
-                total_amount = sum(float(test.get('amount', 0)) for test in valid_tests)
-                patient_dict['totalAmount'] = str(total_amount)
-                
-                patient_data.append(patient_dict)
-            
-            # Return the filtered patient data
-            return JsonResponse({'data': patient_data}, safe=False)
-            
-        except ValueError:
-            return JsonResponse({'error': 'Invalid date format. Use YYYY-MM-DD.'}, status=400)
-    return JsonResponse({'error': 'Date parameter is required.'}, status=400)
-from django.http import JsonResponse
-from .models import BarcodeTestDetails
-def check_barcode(request):
-    patient_id = request.GET.get('patient_id')
-    date = request.GET.get('date')
-    if BarcodeTestDetails.objects.filter(patient_id=patient_id, date=date).exists():
-        return JsonResponse({"exists": True})
-    return JsonResponse({"exists": False})
+@permission_classes([HasRoleAndDataPermission])
 def get_patient_test_details(request):
     patient_id = request.GET.get('patient_id')
     if not patient_id:
@@ -1952,12 +1018,8 @@ def get_patient_test_details(request):
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
   
-
-from django.http import JsonResponse
-from datetime import datetime
-from django.utils.timezone import make_aware
-from .models import SampleStatus, TestValue
-import traceback
+@api_view(['GET'])
+@permission_classes([HasRoleAndDataPermission])
 def patient_test_status(request):
     try:
         patient_ids = request.GET.getlist('patient_id')  # Accept multiple patient IDs
@@ -2048,14 +1110,10 @@ def patient_test_status(request):
         print("Critical Error:", str(e))
         print(traceback.format_exc())
         return JsonResponse({'error': str(e)}, status=500)
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-import json
-from datetime import datetime, timedelta
-from pymongo import MongoClient
-from urllib.parse import quote_plus
-import certifi
+
+@api_view(['GET','PATCH'])
 @csrf_exempt
+@permission_classes([HasRoleAndDataPermission])
 def overall_report(request):
     # MongoDB Connection Setup
     password = quote_plus('Smrft@2024')
@@ -2207,12 +1265,10 @@ def overall_report(request):
             })
         return JsonResponse(formatted_data, safe=False)
     return JsonResponse({"error": "Invalid request method. Only GET is allowed."}, status=405)
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-import json
-from datetime import datetime
-from .models import TestValue  # Import your model
+
+@api_view(['GET'])
 @csrf_exempt
+@permission_classes([HasRoleAndDataPermission])
 def patient_test_sorting(request):
     try:
         patient_id = request.GET.get('patient_id')
@@ -2242,132 +1298,10 @@ def patient_test_sorting(request):
         return JsonResponse({patient_id: {"testdetails": test_list}})
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-import json
-from pymongo import MongoClient
-from urllib.parse import quote_plus
-import certifi
-from datetime import datetime
-@csrf_exempt
-def credit_amount_update(request, patient_id):
-    password = quote_plus('Smrft@2024')
-    # MongoDB connection with TLS certificate
-    client = MongoClient(
-        f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-        tls=True,
-        tlsCAFile=certifi.where()
-    )
-    db = client.Lab
-    collection = db['labbackend_patient']
-    if request.method == "PATCH":
-        try:
-            body = json.loads(request.body)
-            # Convert incoming values
-            credit_amount = str(body.get("credit_amount", "0"))  # Store as a string
-            amount_paid = int(float(body.get("amount_paid", 0)))
-            paid_date = body.get("paid_date", None)
-            payment_method = body.get("payment_method", "N/A")  # Default to "N/A" if missing
-            # Validate required fields
-            if not credit_amount:
-                return JsonResponse({"error": "Missing required field: credit_amount."}, status=400)
-            # Fetch the patient document
-            patient = collection.find_one({"patient_id": patient_id})
-            if not patient:
-                return JsonResponse({"error": "Patient not found."}, status=404)
-            # Parse existing credit details safely
-            credit_details = patient.get("credit_details", [])
-            if isinstance(credit_details, str):
-                try:
-                    credit_details = json.loads(credit_details)
-                except json.JSONDecodeError:
-                    credit_details = []
-            # Calculate the updated credit amount
-            current_credit_amount = int(float(patient.get("credit_amount", 0)))
-            updated_credit_amount = str(current_credit_amount - amount_paid)  # Store as string
-            # Append the new entry to `credit_details`
-            credit_details.append({
-                "credit_amount": credit_amount,  # Stored as a string
-                "amount_paid": amount_paid,
-                "paid_date": paid_date,
-                "payment_method": payment_method,  # Store payment method
-                "remaining_amount": updated_credit_amount  # Stored as a string
-            })
-            # Update the database
-            collection.update_one(
-                {"patient_id": patient_id},
-                {
-                    "$set": {
-                        "credit_amount": updated_credit_amount,  # Store as a string
-                        "credit_details": json.dumps(credit_details)  # Store as JSON string
-                    }
-                }
-            )
-            return JsonResponse({
-                "message": "Credit amount updated successfully.",
-                "credit_details": credit_details
-            })
-        except json.JSONDecodeError:
-            return JsonResponse({"error": "Invalid JSON format."}, status=400)
-        except Exception as e:
-            return JsonResponse({"error": str(e)}, status=500)
-    else:
-        return JsonResponse({"error": "Invalid request method. Only PATCH is allowed."}, status=405)
 
 
-
-@api_view(['PATCH'])
-def update_credit_amount(request, patient_id):
-    # MongoDB connection setup
-    password = quote_plus('Smrft@2024')
-
-        # MongoDB connection with TLS certificate
-    client = MongoClient(
-            f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-            tls=True,  # Enable TLS/SSL
-            tlsCAFile=certifi.where()  # Use certifi's CA certificate bundle
-        )
-
-    db = client.Lab  # Database name
-    collection = db['labbackend_patient']
-    # Retrieve the Django patient record, return 404 if not found
-    patient = get_object_or_404(Patient, patient_id=patient_id)
-    # Update only the credit amount if provided in the request data
-    credit_amount = request.data.get("credit_amount")
-    if credit_amount is not None:
-        # Convert credit_amount to an integer for MongoDB consistency
-        try:
-            credit_amount = (credit_amount)
-        except ValueError:
-            return Response({"error": "Credit amount must be an integer."}, status=status.HTTP_400_BAD_REQUEST)
-        # Update the credit amount in Django
-        patient.credit_amount = credit_amount
-        patient_id_str = str(patient_id)
-        # Update MongoDB with credit_amount as an integer
-        result = collection.update_one(
-            {"patient_id": patient_id_str},
-            {"$set": {"credit_amount": credit_amount}},
-            upsert=False
-        )
-        # Check if the document was matched in MongoDB
-        if result.matched_count == 0:
-            return Response({"error": "Patient not found in MongoDB."}, status=status.HTTP_404_NOT_FOUND)
-        # Save the updated credit amount in the Django model
-        try:
-            patient.save()
-        except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        return Response({
-            "message": "Credit amount updated successfully",
-            "credit_amount": credit_amount
-        }, status=status.HTTP_200_OK)
-    # Return an error if credit_amount was not provided in the request
-    return Response({"error": "Credit amount is required."}, status=status.HTTP_400_BAD_REQUEST)
-
-
-from django.core.mail import EmailMessage
-from django.conf import settings  # To access the settings for DEFAULT_FROM_EMAIL
 @api_view(['POST'])
+@permission_classes([HasRoleAndDataPermission])
 def send_email(request):
     try:
         subject = request.data.get('subject', 'No Subject')
@@ -2397,347 +1331,11 @@ def send_email(request):
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
    
-from datetime import datetime, timedelta
-from django.views.decorators.csrf import csrf_exempt
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
-from .models import SalesVisitLog
-from .serializers import SalesVisitLogSerializer
-from datetime import datetime, timedelta
 
-from datetime import datetime, timedelta
-from django.views.decorators.csrf import csrf_exempt
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
-from .models import SalesVisitLog
-from .serializers import SalesVisitLogSerializer
-from datetime import datetime
-from django.http import JsonResponse
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
-from .models import SalesVisitLog
-from .serializers import SalesVisitLogSerializer
-
-from datetime import datetime, timedelta
-from django.views.decorators.csrf import csrf_exempt
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
-from .models import SalesVisitLog
-from .serializers import SalesVisitLogSerializer
-import re
-
-@csrf_exempt
-@api_view(['GET', 'POST'])
-def salesvisitlog(request):
-    if request.method == 'POST':
-        serializer = SalesVisitLogSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-    elif request.method == 'GET':
-        date = request.query_params.get('date', None)
-        month = request.query_params.get('month', None)
-        week = request.query_params.get('week', None)  # Expecting "YYYY-Wxx"
-        salesPerson = request.query_params.get('salesPerson', None)
-
-        logs = SalesVisitLog.objects.all()
-
-        # Filter by a specific date
-        if date:
-            logs = logs.filter(date=datetime.strptime(date, "%Y-%m-%d").date())
-
-        # Filter by month (YYYY-MM format)
-        if month:
-            try:
-                year, month = map(int, month.split('-'))
-                start_date = datetime(year, month, 1)
-                if month == 12:
-                    end_date = datetime(year + 1, 1, 1)
-                else:
-                    end_date = datetime(year, month + 1, 1)
-                logs = logs.filter(date__gte=start_date, date__lt=end_date)
-            except ValueError:
-                return Response({"error": "Invalid month format. Use YYYY-MM."}, status=status.HTTP_400_BAD_REQUEST)
-
-        # Filter by week (YYYY-Wxx format)
-        if week:
-            try:
-                match = re.match(r"(\d{4})-W(\d{1,2})", week)
-                if not match:
-                    return Response({"error": "Invalid week format. Use YYYY-Wxx."}, status=status.HTTP_400_BAD_REQUEST)
-
-                year, week_number = map(int, match.groups())
-                start_date = datetime.strptime(f"{year}-W{week_number}-1", "%Y-W%W-%w").date()
-                end_date = start_date + timedelta(days=6)  # Week ends on Sunday
-                
-                logs = logs.filter(date__range=[start_date, end_date])
-            except ValueError:
-                return Response({"error": "Invalid week format. Use YYYY-Wxx."}, status=status.HTTP_400_BAD_REQUEST)
-
-        # Filter by salesperson name
-        if salesPerson:
-            logs = logs.filter(salesMapping__iexact=salesPerson)
-
-        serializer = SalesVisitLogSerializer(logs, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
-
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-from .models import SalesVisitLog
-from .serializers import SalesVisitLogSerializer
-import datetime
-from datetime import datetime
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-from .models import SalesVisitLog  # Ensure you import your model
-from .serializers import SalesVisitLogSerializer
-
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-from .models import SalesVisitLog
-from .serializers import SalesVisitLogSerializer
-from datetime import datetime, date  # Import `date` separately
-
-@csrf_exempt
-def get_sales_log(request):
-    date_param = request.GET.get("date")  # YYYY-MM or YYYY-MM-DD
-    salesMapping = request.GET.get("salesMapping")
-
-    if not date_param or not salesMapping:
-        return JsonResponse({"error": "Date and user salesmapping name are required"}, status=400)
-
-    try:
-        if len(date_param) == 7:  # Filtering by month (YYYY-MM)
-            year, month = map(int, date_param.split("-"))
-            start_date = date(year, month, 1)  # First day of the month
-            if month == 12:
-                end_date = date(year + 1, 1, 1)  # Start of next year
-            else:
-                end_date = date(year, month + 1, 1)  # Start of next month
-            sales_logs = SalesVisitLog.objects.filter(
-                date__gte=start_date, date__lt=end_date, salesMapping=salesMapping
-            )
-        else:  # Filtering by full date (YYYY-MM-DD)
-            selected_date = datetime.strptime(date_param, "%Y-%m-%d").date()  # Correct usage
-            sales_logs = SalesVisitLog.objects.filter(date=selected_date, salesMapping=salesMapping)
-
-    except ValueError:
-        return JsonResponse({"error": "Invalid date format"}, status=400)
-
-    serializer = SalesVisitLogSerializer(sales_logs, many=True)
-    return JsonResponse(serializer.data, safe=False)
-
-
-
-from .models import HospitalLab
-from .serializers import HospitalLabSerializer
-@api_view(['GET', 'POST'])
-def hospitallabform(request):
-    if request.method == 'GET':
-        # Retrieve all HospitalLab objects and serialize them
-        hospital_labs = HospitalLab.objects.all()
-        serializer = HospitalLabSerializer(hospital_labs, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-    elif request.method == 'POST':
-        # Handle the creation of a new HospitalLab object
-        serializer = HospitalLabSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(
-                {"message": "Hospital/Lab details saved successfully."},
-                status=status.HTTP_201_CREATED
-            )
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-   
-
-from .models import LogisticData
-from .serializers import LogisticDataSerializer
-@api_view(['POST'])
-def save_logistic_data(request):
-    if request.method == 'POST':
-        serializer = LogisticDataSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()  # Save the logistic data
-            return Response({"message": "Data saved successfully!"}, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-   
-   
-@api_view(['GET'])
-def get_logistic_data(request):
-    if request.method == 'GET':
-        data = LogisticData.objects.all()  # Fetch all logistic data
-        serializer = LogisticDataSerializer(data, many=True)
-        return Response(serializer.data)
-   
-
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
-from datetime import datetime
-from .models import LogisticTask
-from .serializers import LogisticTaskSerializer
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
-from .models import LogisticTask
-from .serializers import LogisticTaskSerializer
-from datetime import datetime
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
-from .models import LogisticTask
-from .serializers import LogisticTaskSerializer
-from datetime import datetime
-@api_view(['POST', 'GET'])
-def savesamplecollectordetails(request):
-    if request.method == 'POST':
-        tasks_data = request.data
-        if isinstance(tasks_data, dict):  # Convert single object into a list
-            tasks_data = [tasks_data]
-        for task_data in tasks_data:
-            # Exclude samplePickedUp and samplePickedUpTime initially
-            task_data.pop("samplePickedUp", None)
-            task_data.pop("samplePickedUpTime", None)
-            # Check if the task already exists
-            existing_task = LogisticTask.objects.filter(
-                sampleCollector=task_data.get("sampleCollector"),
-                date=task_data.get("date"),
-                lab_name=task_data.get("lab_name"),
-                salesMapping=task_data.get("salesMapping"),
-            ).exists()
-            if not existing_task:
-                serializer = LogisticTaskSerializer(data=task_data)
-                if serializer.is_valid():
-                    serializer.save()
-                else:
-                    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        return Response({"message": "Tasks saved successfully."}, status=status.HTTP_201_CREATED)
-    elif request.method == 'GET':
-        tasks = LogisticTask.objects.all()  # Fetch all logistic data
-        serializer = LogisticTaskSerializer(tasks, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-from rest_framework.decorators import api_view
-from datetime import datetime
-from pymongo import MongoClient
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
-from datetime import datetime
-from pymongo import MongoClient
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
-@api_view(['PATCH'])
-def update_sample_collector_details(request):
-    password = quote_plus('Smrft@2024')
-    client = MongoClient(
-        f"mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority",
-        tls=True,
-        tlsCAFile=certifi.where(),
-    )
-    db = client["Lab"]
-    collection = db["labbackend_logistictask"]
-    try:
-        sampleCollector = request.data.get("sampleCollector")
-        date_str = request.data.get("date")
-        lab_name = request.data.get("lab_name")
-        salesperson = request.data.get("salesperson")
-        # Convert date to datetime object for matching MongoDB format
-        date_obj = datetime.strptime(date_str, "%Y-%m-%d")
-        filter_query = {
-            "sampleCollector": sampleCollector,
-            "date": date_obj,
-            "lab_name": lab_name,
-            "salesperson": salesperson,
-            "status": None  # Only update if status is initially null
-        }
-        sample_picked_up = request.data.get("samplePickedUp", False)
-        sample_picked_up_time = request.data.get("samplePickedUpTime")
-        if sample_picked_up and sample_picked_up_time:
-            update_fields = {
-                "status": "samplepickedup",
-                "samplepickeduptime": sample_picked_up_time
-            }
-            result = collection.update_one(filter_query, {"$set": update_fields})
-            if result.matched_count == 0:
-                return Response({"error": "No matching task found or status already updated."}, status=status.HTTP_404_NOT_FOUND)
-            return Response({"message": "Task updated successfully."}, status=status.HTTP_200_OK)
-        else:
-            return Response({"error": "Missing required fields."}, status=status.HTTP_400_BAD_REQUEST)
-    except Exception as e:
-        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-   
-
-def getlogisticdatabydate(request):
-    # Get query parameters
-    sample_collector = request.GET.get('sampleCollector', None)
-    if not sample_collector:
-        return JsonResponse({"error": "sampleCollector is required"}, status=400)
-    # Filter data by sampleCollector
-    data = LogisticData.objects.filter(sampleCollector=sample_collector)
-    # Serialize the data
-    serializer = LogisticDataSerializer(data, many=True)
-    return JsonResponse(serializer.data, safe=False)
-   
-
-@csrf_exempt
-def get_patient_by_id(request, patient_id):
-    """
-    API endpoint to fetch patient details based on patient ID.
-    """
-    if request.method == 'GET':
-        try:
-            # Fetch the patient using Django ORM
-            patient = Patient.objects.get(patient_id=patient_id)
-            # Convert the patient object to a dictionary
-            patient_data = {
-                "patient_id": patient.patient_id,
-                "patientname": patient.patientname,
-                "phone": patient.phone,
-                "gender": patient.gender,
-                "email": patient.email,
-                "address": patient.address,
-                "age": patient.age,
-                "age_type": patient.age_type,
-                "sample_collector": patient.sample_collector,
-                "salesMapping": patient.salesMapping,
-                "date": patient.date.strftime('%Y-%m-%d'),  # Format date as string
-                "discount": patient.discount,
-                "lab_id": patient.lab_id,
-                "refby": patient.refby,
-                "branch": patient.branch,
-                "B2B": patient.B2B,
-                "segment": patient.segment,
-                "testname": patient.testname,
-                "totalAmount": patient.totalAmount,
-                "payment_method": patient.payment_method,
-                "registeredby": patient.registeredby,
-                "bill_no": patient.bill_no,
-                "PartialPayment": patient.PartialPayment,
-            }
-            return JsonResponse(patient_data, safe=False)
-        except Patient.DoesNotExist:
-            return JsonResponse({"error": "Patient not found"}, status=404)
-    return JsonResponse({"error": "Invalid HTTP method"}, status=405)
-
-
-from datetime import datetime, timedelta
-import pytz
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from .models import Patient, SampleStatus, TestValue
-from .serializers import PatientSerializer, SampleStatusSerializer, TestValueSerializer
 
 # Define the timezone for India Standard Time (IST)
 IST = pytz.timezone('Asia/Kolkata')
-
+@permission_classes([HasRoleAndDataPermission])
 class ConsolidatedDataView(APIView):
     def get(self, request):
         # Default to today's date if no date is provided
@@ -2809,1373 +1407,3 @@ class ConsolidatedDataView(APIView):
         except Exception as e:
             return Response({"error": str(e)}, status=500)
 
-
-
-
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-import json
-from pymongo import MongoClient
-from urllib.parse import quote_plus
-import certifi
-from bson import ObjectId
-
-# Function to get MongoDB collection
-def get_mongo_collection():
-    password = quote_plus("Smrft@2024")
-    client = MongoClient(
-        f"mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority",
-        tls=True,
-        tlsCAFile=certifi.where(),
-    )
-    db = client["Lab"]
-    return db["labbackend_invoice"]
-
-
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-import json
-from pymongo import MongoClient
-from urllib.parse import quote_plus
-import certifi
-from bson import ObjectId
-
-
-# Function to get MongoDB collection
-def get_mongo_collection():
-    password = quote_plus("Smrft@2024")
-    client = MongoClient(
-        f"mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority",
-        tls=True,
-        tlsCAFile=certifi.where(),
-    )
-    db = client["Lab"]
-    return db["labbackend_invoice"]
-
-@csrf_exempt
-def generate_invoice(request):
-    collection = get_mongo_collection()
-    if request.method == "POST":
-        try:
-            data = json.loads(request.body)
-            
-            # Extract patient IDs from the request
-            patient_ids = [patient["patient_id"] for patient in data.get("patients", [])]
-            
-            # Update credit_amount to "0" for selected patients in Django database
-            Patient.objects.filter(patient_id__in=patient_ids).update(credit_amount="0")
-
-            # Insert invoice data into MongoDB
-            result = collection.insert_one(data)
-
-            return JsonResponse(
-                {"message": "Invoice stored successfully, credit amount updated", "id": str(result.inserted_id)},
-                status=201,
-            )
-        except json.JSONDecodeError:
-            return JsonResponse({"error": "Invalid JSON"}, status=400)
-        except Exception as e:
-            return JsonResponse({"error": str(e)}, status=500)
-
-
-
-def get_invoices(request):
-    collection = get_mongo_collection()
-    invoices = list(collection.find({}, {"_id": 0}))  # Exclude MongoDB's `_id` field
-    return JsonResponse(invoices, safe=False)
-
-
-@csrf_exempt
-def update_invoice(request, invoice_number):
-    """Update the invoice with total, paid, and pending amounts, payment date and method."""
-    collection = get_mongo_collection()
-
-    if request.method == "PUT":
-        try:
-            data = json.loads(request.body)
-            new_credit_amount = data.get("totalCreditAmount")
-            paid_amount = data.get("paidAmount", "0.00")
-            pending_amount = data.get("pendingAmount", "0.00")
-            payment_details = data.get("paymentDetails", "{}")
-            payment_history = data.get("paymentHistory", "[]")
-
-            if new_credit_amount is None:
-                return JsonResponse({"error": "Missing totalCreditAmount field"}, status=400)
-            
-            # Update the invoice with all values
-            result = collection.update_one(
-                {"invoiceNumber": invoice_number},
-                {"$set": {
-                    "totalCreditAmount": new_credit_amount,
-                    "paidAmount": paid_amount,
-                    "pendingAmount": pending_amount,
-                    "paymentDetails": payment_details,
-                    "paymentHistory": payment_history
-                }},
-            )
-
-            if result.matched_count == 0:
-                return JsonResponse({"error": "Invoice not found"}, status=404)
-
-            return JsonResponse({
-                "message": "Invoice updated successfully",
-                "pendingAmount": pending_amount,
-                "paidAmount": paid_amount,
-                "paymentDetails": payment_details,
-                "paymentHistory": payment_history
-            }, status=200)
-
-        except json.JSONDecodeError:
-            return JsonResponse({"error": "Invalid JSON"}, status=400)
-        except Exception as e:
-            return JsonResponse({"error": str(e)}, status=500) 
-@csrf_exempt
-def delete_invoice(request, invoice_id):
-    """Delete an invoice based on invoice_id"""
-    collection = get_mongo_collection()
-
-    if request.method == "DELETE":
-        try:
-            result = collection.delete_one({"invoiceNumber": invoice_id})
-
-            if result.deleted_count == 0:
-                return JsonResponse({"error": "Invoice not found"}, status=404)
-
-            return JsonResponse({"message": "Invoice deleted successfully"}, status=200)
-        except Exception as e:
-            return JsonResponse({"error": str(e)}, status=500)
-
-    return JsonResponse({"error": "Invalid request method"}, status=400)
-
-
-from django.http import JsonResponse
-from .models import Patient
-from datetime import datetime, timedelta
-import json
-def salesdashboard(request):
-    sales_mapping = request.GET.get("salesMapping")
-    date_str = request.GET.get("date")  # YYYY-MM-DD
-    month_str = request.GET.get("month")  # YYYY-MM (optional for monthly data)
-    if not sales_mapping:
-        return JsonResponse({"error": "Missing salesMapping parameter"}, status=400)
-    try:
-        if date_str:  # Date-based filtering
-            start_date = datetime.strptime(date_str, "%Y-%m-%d")
-            end_date = start_date + timedelta(days=1)  # End of the day
-        elif month_str:  # Month-based filtering
-            start_date = datetime.strptime(month_str, "%Y-%m")
-            end_date = (start_date.replace(day=1) + timedelta(days=32)).replace(day=1)  # First day of next month
-        else:
-            return JsonResponse({"error": "Missing date or month parameter"}, status=400)
-        # Query data from MongoDB
-        patients = Patient.objects.filter(
-            salesMapping=sales_mapping,
-            date__gte=start_date,
-            date__lt=end_date
-        )
-        # Calculate total patients
-        total_patients = patients.count()
-        # Calculate total amount
-        total_amount = sum(int(patient.totalAmount) for patient in patients if str(patient.totalAmount).isdigit())
-        # Count test occurrences
-        test_counts = {}
-        total_tests = 0
-        for patient in patients:
-            test_data = patient.testname
-            if isinstance(test_data, str):
-                try:
-                    test_data = json.loads(test_data)
-                except json.JSONDecodeError:
-                    continue  # Skip invalid JSON
-            if isinstance(test_data, list):
-                for test in test_data:
-                    test_name = test.get("testname", "Unknown")
-                    test_counts[test_name] = test_counts.get(test_name, 0) + 1
-                    total_tests += 1
-        return JsonResponse({
-            "totalPatients": total_patients,
-            "totalAmount": total_amount,
-            "totalTests": total_tests,
-            "testCounts": test_counts
-        })
-    except ValueError:
-        return JsonResponse({"error": "Invalid date or month format"}, status=400)
-    
-
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from .models import SalesVisitLog
-from .serializers import SalesVisitLogSerializer
-@api_view(['GET'])
-def getsalesmapping(request):
-    if request.method == 'GET':
-        data = SalesVisitLog.objects.all()
-        serializer = SalesVisitLogSerializer(data, many=True)
-        return Response(serializer.data)
-    
-from rest_framework.response import Response
-from django.http import JsonResponse, HttpResponse
-from rest_framework.views import APIView
-from django.views.decorators.http import require_http_methods
-from django.views.decorators.csrf import csrf_exempt
-from rest_framework.decorators import api_view
-from rest_framework import status,viewsets
-from datetime import datetime, timedelta
-from django.db.models import Max
-from urllib.parse import quote_plus
-from pymongo import MongoClient
-from django.views.decorators.http import require_GET
-from django.forms.models import model_to_dict
-from django.shortcuts import get_object_or_404
-from django.utils.dateparse import parse_date
-from django.utils.timezone import make_aware
-from django.db.models import Q
-from rest_framework.decorators import action
-from django.core.mail import send_mail
-import traceback
-import logging
-from django.core.mail import EmailMessage
-from django.conf import settings  # To access the settings for DEFAULT_FROM_EMAIL
-import json
-import random
-import certifi
-import pytz
-import gridfs
-import os
-from gridfs import GridFS
-from pymongo import MongoClient
-from django.shortcuts import get_list_or_404
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from .models import LogisticTask
-from .serializers import LogisticTaskSerializer
-from django.shortcuts import get_list_or_404
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from .models import Patient
-from .serializers import PatientSerializer
-@api_view(['GET'])
-def logisticdashboard(request):
-    sample_collector = request.GET.get('sampleCollector')
-    selected_date = request.GET.get('date')
-    if not sample_collector:
-        return Response({"error": "Sample collector is required"}, status=400)
-    try:
-        data = Patient.objects.filter(sample_collector=sample_collector)
-        if selected_date:
-            data = data.filter(date=selected_date)  # Filter by selected date
-        serializer = PatientSerializer(data, many=True)
-        return Response(serializer.data)
-    except Patient.DoesNotExist:
-        return Response({"error": "No data found"}, status=404)
-
-
-import json
-import random
-from pymongo import MongoClient
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-import json
-from datetime import datetime
-client = MongoClient("mongodb+srv://shinovalab:Smrft%402024@cluster0.xbq9c.mongodb.net/?retryWrites=true&w=majority")
-db = client["Lab"]
-collection = db["labbackend_patient"]
-@csrf_exempt
-def update_patient(request, patient_id):
-    if request.method == "PUT":
-        try:
-            data = json.loads(request.body)
-            # Ensure valid fields are updated
-            update_data = {
-                key: value for key, value in data.items() if value != "" and value is not None
-            }
-            # Convert date string to datetime object if it exists
-            if "date" in update_data:
-                try:
-                    update_data["date"] = datetime.fromisoformat(update_data["date"])
-                except ValueError:
-                    return JsonResponse({"error": "Invalid date format"}, status=400)
-            result = collection.update_one({"patient_id": patient_id}, {"$set": update_data})
-            if result.modified_count > 0:
-                return JsonResponse({"message": "Patient updated successfully"}, status=200)
-            else:
-                return JsonResponse({"message": "No changes made"}, status=200)
-        except Exception as e:
-            return JsonResponse({"error": str(e)}, status=500)
-    return JsonResponse({"error": "Invalid request method"}, status=400)
-
-@csrf_exempt
-def search_refund(request):
-    if request.method == "GET":
-        patient_id = request.GET.get('patient_id')
-        select_date = request.GET.get('date')  # Expected in YYYY-MM-DD format
-        if not patient_id or not select_date:
-            return JsonResponse({"error": "Patient ID and Date are required"}, status=400)
-        try:
-            selected_date = datetime.strptime(select_date, "%Y-%m-%d")
-            # Define start and end of the selected date
-            start_of_day = make_aware(datetime.combine(selected_date, datetime.min.time()))
-            end_of_day = make_aware(datetime.combine(selected_date, datetime.max.time()))
-            # Query using date range
-            patients = Patient.objects.filter(
-                patient_id=patient_id,
-                date__gte=start_of_day,
-                date__lt=end_of_day  # Use `<` to exclude the next day's midnight
-            )
-            
-            result = list(patients.values())
-            
-            # Process each patient record to filter out tests with refund=true
-            for patient in result:
-                if 'testname' in patient and isinstance(patient['testname'], list):
-                    # Check if all tests have refund=true
-                    all_refunded = all(test.get('refund', False) for test in patient['testname'])
-                    
-                    if all_refunded:
-                        # If all tests are refunded, replace the tests with a message
-                        patient['all_refunded'] = True
-                        patient['testname'] = []
-                    else:
-                        # Filter out tests where refund=true
-                        patient['all_refunded'] = False
-                        patient['testname'] = [test for test in patient['testname'] if not test.get('refund', False)]
-            
-            return JsonResponse({"patients": result}, safe=False)
-        except Exception as e:
-            return JsonResponse({"error": str(e)}, status=500)
-       
-
-# Temporary dictionary to hold OTPs (non-persistent)
-otp_storage_refund = {}
-
-@csrf_exempt
-def generate_otp_refund(request):
-    if request.method == "POST":
-        try:
-            data = json.loads(request.body)
-            email = data.get("email")
-            patient_details = data.get("patient_details", {})
-
-            if not email:
-                return JsonResponse({"error": "Email is required"}, status=400)
-           
-            otp = str(random.randint(100000, 999999))  # Generate 6-digit OTP
-            otp_storage_refund[email] = otp  # Store in a temporary dictionary
-           
-            # Construct a professional email message with patient details
-            subject = "Refund Verification OTP"
-            message = f"""Hi Sir/ Madam,
-
-A refund request has been initiated with the following details:
-
-Patient Information:
-- Patient ID: {patient_details.get('patient_id', 'N/A')}
-- Patient Name: {patient_details.get('patient_name', 'N/A')}
-
-Refund Details:
-- Tests: {patient_details.get('tests', 'N/A')}
-- Total Refund Amount: ₹{patient_details.get('total_refund_amount', 'N/A')}
-
-Reason for Refund:
-{patient_details.get('reason', 'No reason provided')}
-
-Your OTP for verifying this refund is: {otp}
-
-Please enter this OTP to process the refund. 
-This OTP will expire shortly.
-
-Best regards,
-Shanmuga Diagnostics"""
-
-            from_email = settings.EMAIL_HOST_USER
-
-            try:
-                send_mail(subject, message, from_email, [email])
-                return JsonResponse({
-                    "message": "OTP sent successfully", 
-                    "otp": otp  # Only for testing, remove in production
-                }, status=200)
-            except Exception as e:
-                return JsonResponse({"error": str(e)}, status=500)
-
-        except Exception as e:
-            return JsonResponse({"error": str(e)}, status=500)
-
-    return JsonResponse({"error": "Invalid request method."}, status=405)
-
-
-@csrf_exempt
-def verify_and_process_refund(request):
-    if request.method == "POST":
-        try:
-            data = json.loads(request.body)
-            email = data.get("email")
-            entered_otp = str(data.get("otp"))
-            patient_id = data.get("patient_id")
-            selected_tests = data.get("selected_tests")
-
-            if not email or not entered_otp or not patient_id or not selected_tests:
-                return JsonResponse({"error": "Email, OTP, Patient ID, and selected tests are required."}, status=400)
-
-            # Verify OTP from temporary dictionary
-            stored_otp = otp_storage_refund.get(email)
-            if stored_otp is None:
-                print(f"OTP for {email} not found")
-                return JsonResponse({"error": "OTP expired or not found"}, status=400)
-
-            if str(stored_otp) != entered_otp:
-                return JsonResponse({"error": "Invalid OTP"}, status=400)
-
-            # Connect to MongoDB
-            password = quote_plus('Smrft@2024')
-            client = MongoClient(
-                f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-                tls=True,
-                tlsCAFile=certifi.where()
-            )
-            db = client.Lab
-            patients_collection = db["labbackend_patient"]
-
-            # Find patient record
-            patient_record = patients_collection.find_one({"patient_id": patient_id})
-            if not patient_record:
-                return JsonResponse({"error": "Patient not found."}, status=404)
-
-            # Get current date and time in ISO format
-            current_datetime = datetime.now().isoformat()
-            
-            # Parse test names and update refund status and refunded_date
-            test_list = json.loads(patient_record.get("testname", "[]"))
-            refunded_tests = []
-            
-            for test in test_list:
-                if test["testname"] in selected_tests:
-                    test["refund"] = True
-                    test["refunded_date"] = current_datetime  # Add the refunded date
-                    refunded_tests.append(test["testname"])
-            
-            # Update only the test list with refund flags and dates
-            update_data = {
-                "testname": json.dumps(test_list)
-            }
-
-            patients_collection.update_one({"patient_id": patient_id}, {"$set": update_data})
-
-            # Remove OTP after successful verification
-            del otp_storage_refund[email]
-
-            return JsonResponse({
-                "message": f"Refund status updated successfully for {len(refunded_tests)} tests", 
-                "refunded_tests": refunded_tests,
-                "refunded_date": current_datetime
-            }, status=200)
-
-        except Exception as e:
-            return JsonResponse({"error": str(e)}, status=500)
-
-    return JsonResponse({"error": "Invalid request method."}, status=405)
-
-
-@csrf_exempt
-def search_cancellation(request):
-    if request.method == "GET":
-        patient_id = request.GET.get('patient_id')
-        current_date = datetime.now().date()  # Get current date
-        
-        if not patient_id:
-            return JsonResponse({"error": "Patient ID is required"}, status=400)
-        
-        try:
-            # Convert current_date to aware datetime
-            start_time = make_aware(datetime.combine(current_date, datetime.min.time()))  # 12:00 AM
-            end_time = make_aware(datetime.combine(current_date, datetime.max.time()))  # 11:59 PM
-           
-            # Fetch patients for the specific patient_id within the date range
-            patients = Patient.objects.filter(
-                Q(patient_id=patient_id) &  # Explicitly filter by patient_id
-                Q(date__range=(start_time, end_time))
-            )
-           
-            # Convert queryset to list of dictionaries
-            result = []
-            for patient in patients:
-                # Get the testname data (handle both string and list formats)
-                test_data = json.loads(patient.testname) if isinstance(patient.testname, str) else patient.testname
-                
-                # Check if all tests have cancellation=true
-                all_cancelled = all(test.get('cancellation', False) for test in test_data)
-                
-                # Create patient dictionary with appropriate data
-                patient_dict = {
-                    'patient_id': patient.patient_id,
-                    'patientname': patient.patientname,
-                    'date': patient.date,
-                    'all_cancelled': all_cancelled,
-                }
-                
-                if all_cancelled:
-                    # If all tests are cancelled, just keep the flag and empty test list
-                    patient_dict['testname'] = []
-                else:
-                    # Filter out tests where cancellation=true
-                    patient_dict['testname'] = [test for test in test_data if not test.get('cancellation', False)]
-                
-                result.append(patient_dict)
-            
-            return JsonResponse({"patients": result}, safe=False)
-        
-        except Exception as e:
-            return JsonResponse({"error": str(e)}, status=500)
-        
-
-# Temporary dictionary to hold OTPs (non-persistent)
-otp_storage_cancellation = {}
-
-@csrf_exempt
-def generate_otp_cancellation(request):
-    if request.method == "POST":
-        try:
-            data = json.loads(request.body)
-            email = data.get("email")
-            patient_details = data.get("patient_details", {})
-
-            if not email:
-                return JsonResponse({"error": "Email is required"}, status=400)
-           
-            otp = str(random.randint(100000, 999999))  # Generate 6-digit OTP
-            otp_storage_cancellation[email] = otp  # Store in a temporary dictionary
-           
-            # Construct a professional email message with patient details
-            subject = "Cancellation Verification OTP"
-            message = f"""Hi Sir/ Madam,
-
-A cancellation request has been initiated with the following details:
-
-Patient Information:
-- Patient ID: {patient_details.get('patient_id', 'N/A')}
-- Patient Name: {patient_details.get('patient_name', 'N/A')}
-
-Cancellation Details:
-- Tests: {patient_details.get('tests', 'N/A')}
-- Total Cancellation Amount: ₹{patient_details.get('total_cancellation_amount', 'N/A')}
-
-Reason for Cancellation:
-{patient_details.get('reason', 'No reason provided')}
-
-Your OTP for verifying this cancellation is: {otp}
-
-Please enter this OTP to process the cancellation. 
-This OTP will expire shortly.
-
-Best regards,
-Shanmuga Diagnostics"""
-
-            from_email = settings.EMAIL_HOST_USER
-
-            try:
-                send_mail(subject, message, from_email, [email])
-                return JsonResponse({
-                    "message": "OTP sent successfully", 
-                    "otp": otp  # Only for testing, remove in production
-                }, status=200)
-            except Exception as e:
-                return JsonResponse({"error": str(e)}, status=500)
-
-        except Exception as e:
-            return JsonResponse({"error": str(e)}, status=500)
-
-    return JsonResponse({"error": "Invalid request method."}, status=405)
-
-
-@csrf_exempt
-def verify_and_process_cancellation(request):
-    if request.method == "POST":
-        try:
-            data = json.loads(request.body)
-            email = data.get("email")
-            entered_otp = str(data.get("otp"))
-            patient_id = data.get("patient_id")
-            selected_tests = data.get("selected_tests")
-
-            if not email or not entered_otp or not patient_id or not selected_tests:
-                return JsonResponse({"error": "Email, OTP, Patient ID, and selected tests are required."}, status=400)
-
-            # Verify OTP
-            stored_otp = otp_storage_cancellation.get(email)
-            if stored_otp is None:
-                return JsonResponse({"error": "OTP expired or not found"}, status=400)
-
-            if str(stored_otp) != entered_otp:
-                return JsonResponse({"error": "Invalid OTP"}, status=400)
-
-            # Connect to MongoDB
-            password = quote_plus('Smrft@2024')
-            client = MongoClient(
-                f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-                tls=True,
-                tlsCAFile=certifi.where()
-            )
-            db = client.Lab
-            patients_collection = db["labbackend_patient"]
-
-            # Find patient record
-            patient_record = patients_collection.find_one({"patient_id": patient_id})
-            if not patient_record:
-                return JsonResponse({"error": "Patient not found."}, status=404)
-
-            # Get today's date in the correct format
-            today_date = datetime.now().strftime("%Y-%m-%d")
-            
-            # Get current date and time in ISO format for cancelled_date
-            current_datetime = datetime.now().isoformat()
-
-            # Convert MongoDB date to a comparable format
-            record_date = patient_record.get("date")
-            if isinstance(record_date, dict) and "$date" in record_date:
-                record_date = datetime.strptime(record_date["$date"][:10], "%Y-%m-%d").strftime("%Y-%m-%d")
-            elif isinstance(record_date, datetime):
-                record_date = record_date.strftime("%Y-%m-%d")
-            else:
-                return JsonResponse({"error": "Invalid date format in patient record."}, status=500)
-
-            # Allow cancellation only if the record date is today
-            if record_date != today_date:
-                return JsonResponse({"error": "Only tests booked today can be canceled."}, status=400)
-
-            # Parse test names from the record
-            test_list = json.loads(patient_record.get("testname", "[]"))
-            refund_amount = 0
-            cancelled_tests = []
-            
-            # Update the cancellation status for selected tests and add cancelled_date
-            for test in test_list:
-                if test["testname"] in selected_tests:
-                    test["cancellation"] = True
-                    test["cancelled_date"] = current_datetime  # Add the cancelled date
-                    refund_amount += test["amount"]
-                    cancelled_tests.append(test["testname"])
-            
-            # If no tests were found for cancellation
-            if refund_amount == 0:
-                return JsonResponse({"error": "No matching tests found for cancellation."}, status=400)
-                
-            # Update totalAmount and credit_amount if applicable
-            updated_total = int(patient_record["totalAmount"]) - refund_amount
-            updated_credit_amount = int(patient_record.get("credit_amount", "0")) - refund_amount if "credit_amount" in patient_record else 0
-
-            # Prepare update data
-            update_data = {
-                "testname": json.dumps(test_list),
-                "totalAmount": str(updated_total),
-            }
-            if "payment_method" in patient_record and "Credit" in patient_record["payment_method"]:
-                update_data["credit_amount"] = str(max(0, updated_credit_amount))
-
-            # Update the database
-            patients_collection.update_one({"patient_id": patient_id}, {"$set": update_data})
-
-            # Remove OTP after successful verification
-            del otp_storage_cancellation[email]
-
-            return JsonResponse({
-                "message": "Cancellation processed successfully", 
-                "refund_amount": refund_amount,
-                "cancelled_tests": cancelled_tests,
-                "cancelled_date": current_datetime
-            }, status=200)
-
-        except Exception as e:
-            return JsonResponse({"error": str(e)}, status=500)
-
-    return JsonResponse({"error": "Invalid request method."}, status=405)
-
-
-
-@api_view(['GET'])
-def get_patients(request):
-    """Fetch patients registered on a given date"""
-    date_str = request.GET.get('date', None)  # Get date from request parameters
-    if not date_str:
-        return Response({"error": "Date parameter is required"}, status=status.HTTP_400_BAD_REQUEST)
-    try:
-        selected_date = datetime.strptime(date_str, "%Y-%m-%d").date()  # Convert to date object
-        # Filter using range to get all records for the selected date
-        next_day = selected_date + timedelta(days=1)
-        patients = Patient.objects.filter(date__gte=selected_date, date__lt=next_day)
-        serializer = PatientSerializer(patients, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-    except ValueError:
-        return Response({"error": "Invalid date format. Use YYYY-MM-DD"}, status=status.HTTP_400_BAD_REQUEST)
-    
-
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
-from datetime import datetime, timedelta
-from .models import Patient
-from .serializers import PatientSerializer
-
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
-import json
-from .models import Patient
-
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
-import json
-from datetime import datetime, timedelta
-from .models import Patient
-
-@api_view(['GET'])
-def get_patient_tests(request, patient_id, date):
-    """Fetch test details for a given patient ID and date"""
-    try:
-        # Convert string date to a datetime object
-        try:
-            date_obj = datetime.strptime(date, "%Y-%m-%d")
-        except ValueError:
-            return Response({"error": "Invalid date format, use YYYY-MM-DD"}, status=status.HTTP_400_BAD_REQUEST)
-
-        # Define start and end of the day to match any time on that date
-        start_of_day = datetime(date_obj.year, date_obj.month, date_obj.day, 0, 0, 0)
-        end_of_day = datetime(date_obj.year, date_obj.month, date_obj.day, 23, 59, 59)
-
-        # Retrieve the patient test details using a date range
-        patient = Patient.objects.filter(patient_id=patient_id, date__gte=start_of_day, date__lte=end_of_day).first()
-
-        if not patient:
-            return Response({"error": "No tests found for the given date and patient ID"}, status=status.HTTP_404_NOT_FOUND)
-
-        # Ensure tests are in the correct format (list)
-        tests = patient.testname  # Assuming `testname` is stored as JSON
-
-        if isinstance(tests, str):
-            try:
-                tests = json.loads(tests)  # Convert JSON string to list
-            except json.JSONDecodeError:
-                return Response({"error": "Invalid test data format"}, status=status.HTTP_400_BAD_REQUEST)
-
-        if not isinstance(tests, list):
-            tests = []  # Default to an empty list if tests are not in a valid format
-
-        # Parse payment method if stored as JSON string
-        payment_method = patient.payment_method
-        if isinstance(payment_method, str):
-            try:
-                payment_method = json.loads(payment_method)
-            except json.JSONDecodeError:
-                payment_method = {}
-
-        # Prepare response data
-        response_data = {
-            "testname": tests,
-            "discount": patient.discount,
-            "payment_method": payment_method
-        }
-
-        return Response(response_data, status=status.HTTP_200_OK)
-
-    except Exception as e:
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-from django.http import JsonResponse
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
-from pymongo import MongoClient
-import certifi
-import json
-from urllib.parse import quote_plus
-
-@api_view(['PATCH'])
-def update_billing(request, patient_id):
-    password = quote_plus('Smrft@2024')
-    client = MongoClient(
-        f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-        tls=True,
-        tlsCAFile=certifi.where()
-    )
-    db = client.Lab
-    collection = db['labbackend_patient']
-
-    # Check if patient exists
-    patient = collection.find_one({"patient_id": patient_id})
-    if not patient:
-        return Response({"error": "Patient not found"}, status=status.HTTP_404_NOT_FOUND)
-
-    new_data = request.data
-
-    # Convert `totalAmount` and `credit_amount` to numbers if possible
-    if "totalAmount" in new_data:
-        try:
-            new_data["totalAmount"] = str(new_data["totalAmount"])
-        except ValueError:
-            return Response({"error": "Invalid totalAmount format"}, status=status.HTTP_400_BAD_REQUEST)
-
-    if "credit_amount" in new_data:
-        try:
-            new_data["credit_amount"] = str(new_data["credit_amount"]) if new_data["credit_amount"] else '0'
-        except ValueError:
-            return Response({"error": "Invalid credit_amount format"}, status=status.HTTP_400_BAD_REQUEST)
-
-    # Ensure `testname` remains unchanged
-    if "testname" in new_data:
-        if not isinstance(new_data["testname"], (list, str)):
-            return Response({"error": "Invalid testname format"}, status=status.HTTP_400_BAD_REQUEST)
-
-    # Update MongoDB document
-    collection.update_one({"patient_id": patient_id}, {"$set": new_data})
-
-    # Fetch updated patient data
-    updated_patient = collection.find_one({"patient_id": patient_id})
-    if updated_patient and "_id" in updated_patient:
-        updated_patient["_id"] = str(updated_patient["_id"])
-
-    return Response(updated_patient, status=status.HTTP_200_OK)
-
-
-
-from pymongo import MongoClient
-import gridfs
-from .models import ClinicalName
-from .serializers import ClinicalNameSerializer
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
-from gridfs import GridFS
-import certifi
-from rest_framework.decorators import action
-
-
-from .models import ClinicalName
-from .serializers import ClinicalNameSerializer
-# MongoDB Connection Setup
-def get_mongodb_connection():
-    # Properly escape the password
-    username = quote_plus("shinovalab")
-    password = quote_plus("Smrft@2024")
-    # MongoDB connection with TLS certificate
-    client = MongoClient(
-        f"mongodb+srv://{username}:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority",
-        tls=True,  # Enable TLS/SSL
-        tlsCAFile=certifi.where()  # Use certifi's CA certificate bundle
-    )
-    db = client.Lab  # Database name
-    return db, GridFS(db)
-# View for handling referrer code generation
-@api_view(['GET'])
-def get_last_referrer_code(request):
-    try:
-        last_clinical = ClinicalName.objects.all().order_by('-referrerCode').first()
-        if last_clinical:
-            return Response({'referrerCode': last_clinical.referrerCode})
-        else:
-            return Response({'referrerCode': 'SD0000'})
-    except Exception as e:
-        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-@api_view(['POST', 'GET'])
-@csrf_exempt
-def clinical_name(request):
-    if request.method == 'POST':
-        mou_copy = request.FILES.get('mouCopy')
-        data = request.data.copy()
-        if not data.get('clinicalname'):
-            return Response({"error": "Clinical name is required"}, status=status.HTTP_400_BAD_REQUEST)
-        if mou_copy:
-            del data['mouCopy']
-        # Set initial approval status
-        data['status'] = 'PENDING_APPROVAL'
-        data['first_approved'] = False
-        data['final_approved'] = False
-        serializer = ClinicalNameSerializer(data=data)
-        if serializer.is_valid():
-            try:
-                clinical_name_instance = serializer.save()
-                if mou_copy:
-                    db, fs = get_mongodb_connection()
-                    file_content = mou_copy.read()
-                    file_id = fs.put(
-                        file_content,
-                        filename=mou_copy.name,
-                        content_type=mou_copy.content_type,
-                        clinical_name=clinical_name_instance.clinicalname
-                    )
-                    clinical_name_instance.mou_file_id = str(file_id)
-                    clinical_name_instance.save()
-                return Response(serializer.data, status=status.HTTP_201_CREATED)
-            except Exception as e:
-                return Response(
-                    {'error': 'Clinical name creation failed', 'details': str(e)},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    elif request.method == 'GET':
-        clinical_names = ClinicalName.objects.filter(status="APPROVED")  # Filter only approved entries
-        serializer = ClinicalNameSerializer(clinical_names, many=True)
-        return Response(serializer.data)
-@api_view(['GET'])
-def download_mou_file(request, clinical_name_id):
-    try:
-        db, fs = get_mongodb_connection()
-        # Find the file by clinical_name_id
-        file_record = fs.find_one({'clinical_name_id': clinical_name_id})
-        if file_record:
-            file_data = file_record.read()
-            response = HttpResponse(
-                file_data,
-                content_type=file_record.content_type
-            )
-            response['Content-Disposition'] = f'attachment; filename="{file_record.filename}"'
-            return response
-        else:
-            return Response({'error': 'File not found'}, status=status.HTTP_404_NOT_FOUND)
-    except Exception as e:
-        return Response(
-            {'error': 'File retrieval failed', 'details': str(e)},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-from bson import ObjectId
-from django.http import HttpResponse
-from rest_framework.response import Response
-from rest_framework.decorators import api_view
-from rest_framework import status
-# Assume get_mongodb_connection is already imported
-
-@api_view(['GET'])
-def preview_mou_file(request, file_id):
-    try:
-        db, fs = get_mongodb_connection()
-        # Convert the file id from string to ObjectId
-        file_record = fs.find_one({'_id': ObjectId(file_id)})
-        if file_record:
-            file_data = file_record.read()
-            response = HttpResponse(
-                file_data,
-                content_type=file_record.content_type
-            )
-            response = HttpResponse(file_data, content_type='application/pdf')
-            response['Content-Disposition'] = f'inline; filename="{file_record.filename}"'
-            return response
-
-        else:
-            return Response({'error': 'File not found'}, status=status.HTTP_404_NOT_FOUND)
-    except Exception as e:
-        return Response(
-            {'error': 'File retrieval failed', 'details': str(e)},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
-# ViewSet for managing clinical names with approval workflow
-class ClinicalNameViewSet(viewsets.ModelViewSet):
-    queryset = ClinicalName.objects.all()
-    serializer_class = ClinicalNameSerializer
-    
-    def get_queryset(self):
-        queryset = ClinicalName.objects.all()
-        status_filter = self.request.query_params.get('status', None)
-        
-        if status_filter:
-            queryset = queryset.filter(status=status_filter)
-
-        return queryset
-    
-    @action(detail=False, methods=['patch'], url_path='(?P<referrerCode>[^/.]+)/first_approve')
-    def first_approve(self, request, referrerCode=None):
-        try:
-            clinical_name = get_object_or_404(ClinicalName, referrerCode=referrerCode)
-            
-            if clinical_name.status != 'PENDING_APPROVAL':
-                return Response({"error": "This clinical name is not pending first approval."}, status=status.HTTP_400_BAD_REQUEST)
-            
-            # Update approval status
-            clinical_name.first_approved = True
-            clinical_name.first_approved_timestamp = timezone.now()
-            clinical_name.status = 'PENDING_FINAL'
-            clinical_name.save()
-            
-            return Response(
-                {"message": "First approval completed successfully", "referrerCode": clinical_name.referrerCode},
-                status=status.HTTP_200_OK
-            )
-        except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
-    @action(detail=False, methods=['patch'], url_path='(?P<referrerCode>[^/.]+)/final_approve')
-    def final_approve(self, request, referrerCode=None):
-        try:
-            clinical_name = get_object_or_404(ClinicalName, referrerCode=referrerCode)
-            
-            if clinical_name.status != 'PENDING_FINAL':
-                return Response({"error": "This clinical name is not pending final approval."}, status=status.HTTP_400_BAD_REQUEST)
-            
-            # Update final approval status
-            clinical_name.final_approved = True
-            clinical_name.final_approved_timestamp = timezone.now()
-            clinical_name.status = 'APPROVED'
-            clinical_name.save()
-            
-            return Response(
-                {"message": "Final approval completed successfully", "referrerCode": clinical_name.referrerCode},
-                status=status.HTTP_200_OK
-            )
-        except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-@csrf_exempt
-@require_http_methods(["GET"])
-def logs_api(request):
-    """Combined API endpoint for both refund and cancellation logs"""
-    try:
-        password = quote_plus('Smrft@2024')
-        client = MongoClient(
-                f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-                tls=True,
-                tlsCAFile=certifi.where()
-            )
-        db = client.Lab
-        patient_collection = db['labbackend_patient']
-        
-        # Get query parameters
-        log_type = request.GET.get('type', 'refund')  # Default to refund if not specified
-        start_date = request.GET.get('start_date')
-        end_date = request.GET.get('end_date')
-        
-        # Base query - default to current date if no dates provided
-        query = {}
-        
-        # Apply date filters
-        if start_date or end_date:
-            query['date'] = {}
-            if start_date:
-                start_date = datetime.strptime(start_date, '%Y-%m-%d')
-                query['date']['$gte'] = start_date
-            if end_date:
-                end_date = datetime.strptime(end_date, '%Y-%m-%d')
-                # Add 1 day to end_date to include the full day
-                end_date = end_date.replace(hour=23, minute=59, second=59)
-                query['date']['$lte'] = end_date
-        else:
-            # Default to current date if no dates provided
-            today = datetime.now()
-            today_start = today.replace(hour=0, minute=0, second=0, microsecond=0)
-            today_end = today.replace(hour=23, minute=59, second=59, microsecond=999999)
-            query['date'] = {'$gte': today_start, '$lte': today_end}
-        
-        # Additional optimization: Only fetch patients with refunded or cancelled tests
-        if log_type == 'refund':
-            # Add an additional filter to only fetch patients with refunded tests
-            # Assuming testname is stored as a string that we can do basic text matching on
-            query['testname'] = {'$regex': '"refund"\\s*:\\s*true', '$options': 'i'}
-        elif log_type == 'cancellation':
-            # Similar for cancellation
-            query['testname'] = {'$regex': '"cancellation"\\s*:\\s*true', '$options': 'i'}
-        
-        patients = list(patient_collection.find(query))
-        results = []
-        
-        if log_type == 'refund':
-            # Process refund logs
-            for patient in patients:
-                try:
-                    # Parse the testname JSON string
-                    tests = json.loads(patient.get('testname', '[]'))
-                    # Filter tests that have refund=true
-                    refundable_tests = [test for test in tests if test.get('refund') is True]
-                    
-                    # If there are refundable tests, add to results
-                    if refundable_tests:
-                        # Calculate total refund amount for this patient
-                        total_refund_amount = sum(float(test.get('amount', 0)) for test in refundable_tests)
-                        
-                        # List all refunded test names and their individual amounts
-                        refunded_test_details = [f"{test.get('testname', 'Unknown Test')} (₹{float(test.get('amount', 0)):.2f})" 
-                                               for test in refundable_tests]
-                        
-                        results.append({
-                            'id': str(patient.get('_id')),
-                            'patient_id': patient.get('patient_id'),
-                            'patientname': patient.get('patientname'),
-                            'bill_no': patient.get('bill_no'),
-                            'date': patient.get('date').isoformat() if isinstance(patient.get('date'), datetime) else str(patient.get('date')),
-                            'testname': ", ".join(refunded_test_details),
-                            'refund_amount': total_refund_amount,
-                            'refunded_tests': refundable_tests,  # Include full test objects for detailed info
-                            'refund_count': len(refundable_tests),  # Add count of refunded tests
-                            'reason': patient.get('refund_reason', 'Test Refunded')  # Try to get specific reason if available
-                        })
-                except (json.JSONDecodeError, AttributeError, KeyError) as e:
-                    # Skip if there's an error parsing the testname JSON
-                    print(f"Error processing patient {patient.get('_id')}: {str(e)}")
-                    continue
-        elif log_type == 'cancellation':
-            # Process cancellation logs
-            for patient in patients:
-                try:
-                    # Parse the testname JSON string
-                    tests = json.loads(patient.get('testname', '[]'))
-                    # Filter tests that are cancelled
-                    cancelled_tests = [test for test in tests if test.get('cancellation') is True]
-                    
-                    # If there are cancelled tests, add to results
-                    if cancelled_tests:
-                        # Calculate total cancelled amount
-                        total_cancelled_amount = sum(float(test.get('amount', 0)) for test in cancelled_tests)
-                        
-                        # List all cancelled test names with their individual amounts
-                        cancelled_test_details = [f"{test.get('testname', 'Unknown Test')} (₹{float(test.get('amount', 0)):.2f})" 
-                                               for test in cancelled_tests]
-                        
-                        results.append({
-                            'id': str(patient.get('_id')),
-                            'patient_id': patient.get('patient_id'),
-                            'patientname': patient.get('patientname'),
-                            'bill_no': patient.get('bill_no'),
-                            'date': patient.get('date').isoformat() if isinstance(patient.get('date'), datetime) else str(patient.get('date')),
-                            'testname': ", ".join(cancelled_test_details),
-                            'refund_amount': total_cancelled_amount,
-                            'cancelled_tests': cancelled_tests,  # Include full test objects for detailed info
-                            'cancel_count': len(cancelled_tests),  # Add count of cancelled tests
-                            'reason': patient.get('cancellation_reason', 'Test Cancelled')  # Try to get specific reason if available
-                        })
-                except (json.JSONDecodeError, AttributeError, KeyError) as e:
-                    # Skip if there's an error parsing the testname JSON
-                    print(f"Error processing patient {patient.get('_id')}: {str(e)}")
-                    continue
-        
-        return JsonResponse(results, safe=False)
-    except Exception as e:
-        print(f"Error in logs_api: {str(e)}")
-        return JsonResponse({"error": str(e)}, status=500)
-    
-
-
-from django.http import JsonResponse
-from django.views.decorators.http import require_GET
-from datetime import datetime, date
-from pymongo import MongoClient
-import certifi
-from urllib.parse import quote_plus
-import json
-@require_GET
-def dashboard_data(request):
-    try:
-        # Get date range and payment method from request parameters
-        from_date = request.GET.get('from_date')
-        to_date = request.GET.get('to_date')
-        payment_method = request.GET.get('payment_method')
-        # Set default to current date if no dates provided
-        if not from_date and not to_date:
-            today = date.today()
-            from_date = today.strftime('%Y-%m-%d')
-            to_date = today.strftime('%Y-%m-%d')
-        # Convert to datetime objects with timezone handling
-        if from_date:
-            from_date = datetime.strptime(from_date, '%Y-%m-%d')
-        if to_date:
-            # Set to end of day for inclusive filtering
-            to_date = datetime.strptime(to_date, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
-        # MongoDB connection
-        password = quote_plus('Smrft@2024')
-        client = MongoClient(
-            f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-            tls=True,
-            tlsCAFile=certifi.where()
-        )
-        db = client.Lab
-        collection = db.labbackend_patient
-        # Build the query for date filtering
-        query = {}
-        if from_date and to_date:
-            query['date'] = {'$gte': from_date, '$lte': to_date}
-        elif from_date:
-            query['date'] = {'$gte': from_date}
-        elif to_date:
-            query['date'] = {'$lte': to_date}
-        # Add payment method filtering if specified
-        if payment_method:
-            if payment_method == "PartialPayment":
-                query['payment_method'] = {'$regex': 'PartialPayment', '$options': 'i'}
-            else:
-                # Check both direct payment_method and method inside PartialPayment
-                query['$or'] = [
-                    {'payment_method': {'$regex': f'"paymentmethod":"{payment_method}"', '$options': 'i'}},
-                    {'PartialPayment': {'$regex': f'"method":"{payment_method}"', '$options': 'i'}}
-                ]
-        # Execute the query to get filtered patients
-        patients = list(collection.find(query))
-        # Process the data for dashboard
-        total_patients = len(patients)
-        total_revenue = 0
-        # Payment method statistics
-        payment_methods = {
-            'Cash': 0,
-            'Card': 0,
-            'UPI': 0,
-            'Credit': 0,
-            'PartialPayment': 0
-        }
-        # Track revenue by payment method
-        payment_method_amounts = {
-            'Cash': 0,
-            'Card': 0,
-            'UPI': 0,
-            'Credit': 0,
-            'PartialPayment': 0
-        }
-        # Segment statistics
-        segments = {
-            'B2B': 0,
-            'Walk-in': 0,
-            'Home Collection': 0
-        }
-        # B2B client statistics
-        b2b_clients = {}
-        # Credit statistics
-        total_credit = 0
-        credit_paid = 0
-        credit_pending = 0
-        # Safe get method for handling potential string or None values
-        def safe_get(obj, key, default=None):
-            if obj is None:
-                return default
-            if isinstance(obj, dict):
-                return obj.get(key, default)
-            return default
-        # Helper function to parse JSON strings
-        def parse_json(json_str, default=None):
-            if not json_str:
-                return default
-            if isinstance(json_str, dict):
-                return json_str
-            try:
-                return json.loads(json_str)
-            except json.JSONDecodeError:
-                return default
-        # Process each patient
-        for patient in patients:
-            # Process total amount
-            try:
-                total_amount = float(safe_get(patient, 'totalAmount', 0))
-                total_revenue += total_amount
-            except (ValueError, TypeError):
-                pass
-            # Extract payment information
-            payment_info = parse_json(safe_get(patient, 'payment_method'), {'paymentmethod': ''})
-            patient_payment_method = safe_get(payment_info, 'paymentmethod', '')
-            # Handle partial payments
-            if patient_payment_method == 'PartialPayment':
-                partial_payment_info = parse_json(safe_get(patient, 'PartialPayment'), {})
-                actual_method = safe_get(partial_payment_info, 'method', '')
-                # Record the partial payment for display in the dashboard
-                payment_methods['PartialPayment'] += 1
-                if actual_method and actual_method in payment_methods:
-                    try:
-                        # Calculate paid amount and credit amount
-                        total_amount = float(safe_get(patient, 'totalAmount', 0))
-                        credit_amount = float(safe_get(partial_payment_info, 'credit', 0))
-                        paid_amount = total_amount - credit_amount
-                        # Add paid amount to the actual payment method
-                        payment_method_amounts[actual_method] += paid_amount
-                        # Add credit amount to the 'Credit' category
-                        payment_method_amounts['Credit'] += credit_amount
-                        # Record total amount under PartialPayment for accurate statistics
-                        payment_method_amounts['PartialPayment'] += total_amount
-                    except (ValueError, TypeError):
-                        pass
-            elif patient_payment_method and patient_payment_method in payment_methods:
-                payment_methods[patient_payment_method] += 1
-                # Add amount to payment method total
-                try:
-                    payment_amount = float(safe_get(patient, 'totalAmount', 0))
-                    payment_method_amounts[patient_payment_method] += payment_amount
-                except (ValueError, TypeError):
-                    pass
-            # Process segment
-            segment = safe_get(patient, 'segment', '')
-            if segment and segment in segments:
-                segments[segment] += 1
-            # Process B2B clients
-            if segment == 'B2B':
-                b2b_name = safe_get(patient, 'B2B', '')
-                if b2b_name:
-                    b2b_clients[b2b_name] = b2b_clients.get(b2b_name, 0) + 1
-            # Process credit information - from both direct credit and partial payments
-            try:
-                # Direct credit amount
-                credit_amount = float(safe_get(patient, 'credit_amount', 0))
-                # Add credit from partial payments if not already included
-                if not credit_amount and patient_payment_method == 'PartialPayment':
-                    partial_payment_info = parse_json(safe_get(patient, 'PartialPayment'), {})
-                    partial_credit = float(safe_get(partial_payment_info, 'credit', 0))
-                    credit_amount += partial_credit
-                total_credit += credit_amount
-            except (ValueError, TypeError):
-                pass
-            # Process credit details for paid amounts
-            credit_details = parse_json(safe_get(patient, 'credit_details'), [])
-            if isinstance(credit_details, list):
-                for detail in credit_details:
-                    if isinstance(detail, dict):
-                        try:
-                            amount_paid = float(safe_get(detail, 'amount_paid', 0))
-                            credit_paid += amount_paid
-                        except (ValueError, TypeError):
-                            pass
-        credit_pending = total_credit - credit_paid
-        # Prepare payment method statistics for the filtered view
-        filtered_payment_stats = {}
-        if payment_method:
-            filtered_payment_stats = {
-                'count': 0,
-                'amount': 0
-            }
-            # Count patients with the specified payment method (including partial payments)
-            for patient in patients:
-                payment_info = parse_json(safe_get(patient, 'payment_method'), {'paymentmethod': ''})
-                patient_payment_method = safe_get(payment_info, 'paymentmethod', '')
-                is_matching = False
-                if patient_payment_method == payment_method:
-                    is_matching = True
-                elif patient_payment_method == 'PartialPayment':
-                    partial_payment_info = parse_json(safe_get(patient, 'PartialPayment'), {})
-                    actual_method = safe_get(partial_payment_info, 'method', '')
-                    if actual_method == payment_method:
-                        is_matching = True
-                if is_matching:
-                    filtered_payment_stats['count'] += 1
-                    try:
-                        filtered_payment_stats['amount'] += float(safe_get(patient, 'totalAmount', 0))
-                    except (ValueError, TypeError):
-                        pass
-        # Prepare response data
-        response_data = {
-            'total_patients': total_patients,
-            'total_revenue': round(total_revenue, 2),
-            'payment_methods': payment_methods,
-            'payment_method_amounts': {k: round(v, 2) for k, v in payment_method_amounts.items()},
-            'segments': segments,
-            'b2b_clients': dict(sorted(b2b_clients.items(), key=lambda x: x[1], reverse=True)),
-            'credit_statistics': {
-                'total_credit': round(total_credit, 2),
-                'credit_paid': round(credit_paid, 2),
-                'credit_pending': round(credit_pending, 2)
-            }
-        }
-        if payment_method:
-            response_data['filtered_payment_stats'] = {
-                'count': filtered_payment_stats['count'],
-                'amount': round(filtered_payment_stats['amount'], 2)
-            }
-        return JsonResponse({
-            'success': True,
-            'data': response_data
-        })
-    except Exception as e:
-        return JsonResponse({
-            'success': False,
-            'error': str(e)
-        }, status=500)

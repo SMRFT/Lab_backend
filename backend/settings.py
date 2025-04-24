@@ -11,7 +11,6 @@ https://docs.djangoproject.com/en/3.2/ref/settings/
 """
 
 from pathlib import Path
-import certifi
 import os
 from dotenv import load_dotenv
 
@@ -99,21 +98,7 @@ STATIC_URL = '/static/'
 
 # Database
 # https://docs.djangoproject.com/en/3.2/ref/settings/#databases
-import certifi
-
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'djongo',
-#         'NAME': 'Lab',
-#         'ENFORCE_SCHEMA': False,
-#         'CLIENT': {
-#             'host': 'mongodb+srv://shinovalab:<db_password>@cluster0.xbq9c.mongodb.net/?retryWrites=true&w=majority',
-#             'password': 'Smrft@2024',
-#             'tls': True,  # Enable TLS/SSL
-#             'tlsCAFile': certifi.where(),  # Use certifi's CA certificate
-#         }
-#     }
-# }
+import os
 import certifi
 DATABASES = {
     'default': {
@@ -128,17 +113,22 @@ DATABASES = {
         }
     }
 }
+
+
 # DATABASES = {
 #     'default': {
 #         'ENGINE': 'djongo',
-#         'NAME': os.getenv("DB_NAME"),
+#         'NAME': 'Lab',
 #         'ENFORCE_SCHEMA': False,
 #         'CLIENT': {
-#             'host': os.getenv("DB_HOST"),
-#             'tls': False,  # ✅ Disable TLS if not required
+#             'host': 'mongodb+srv://shinovalab:<db_password>@cluster0.xbq9c.mongodb.net/?retryWrites=true&w=majority',
+#             'password': 'Smrft@2024',
+#             'tls': True,  # Enable TLS/SSL
+#             'tlsCAFile': certifi.where(),  # Use certifi's CA certificate
 #         }
 #     }
 # }
+
 # Password validation
 # https://docs.djangoproject.com/en/3.2/ref/settings/#auth-password-validators
 
