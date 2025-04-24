@@ -14,7 +14,6 @@ import json
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.permissions import AllowAny
-from labbackend.auth.auth import HasRoleAndDataPermission
 from pyauth.auth import HasRoleAndDataPermission
 
 

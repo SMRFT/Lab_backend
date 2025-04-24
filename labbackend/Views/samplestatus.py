@@ -1,19 +1,20 @@
 
-from django.http import JsonResponse, HttpResponse
+from django.http import JsonResponse
 
 from django.views.decorators.csrf import csrf_exempt
-from django.db.models import Max
 from django.forms.models import model_to_dict
 import json
 from urllib.parse import quote_plus
-from pymongo import MongoClient
-import certifi
 from django.utils import timezone 
 from datetime import timedelta
-from datetime import datetime, date 
+from datetime import datetime
+import os
+
+#models
 from ..models import SampleStatus 
 from ..models import BarcodeTestDetails
-import os
+
+
 #auth
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated

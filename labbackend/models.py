@@ -5,6 +5,8 @@ class Register(models.Model):
     role = models.CharField(max_length=500)
     password = models.CharField(max_length=500)
     confirmPassword = models.CharField(max_length=500)
+
+
 #new registration
 class Patient(models.Model):
     patient_id = models.CharField(max_length=10)
