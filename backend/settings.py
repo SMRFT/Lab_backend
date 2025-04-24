@@ -91,17 +91,11 @@ TEMPLATES = [
 WSGI_APPLICATION = 'backend.wsgi.application'
 CORS_ORIGIN_ALLOW_ALL = True
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000","http://localhost:3001","http://localhost:1071",'https://salemcosmeticclinic.netlify.app','https://shinovadatabase.in','https://api.shinovadatabase.in']
+    "http://localhost:3000","http://localhost:3001",'https://salemcosmeticclinic.netlify.app','https://shinovadatabase.in','https://api.shinovadatabase.in']
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/3.2/howto/static-files/
 
-CORS_ALLOW_HEADERS = [
-    "Authorization",
-    "Content-Type",
-    "Branch-Code"
-]
-
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
 
 # Database
 # https://docs.djangoproject.com/en/3.2/ref/settings/#databases
@@ -191,7 +185,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 EMAIL_BACKEND = os.getenv('EMAIL_BACKEND')
 EMAIL_HOST = os.getenv('EMAIL_HOST')
-EMAIL_PORT = int(os.getenv('EMAIL_PORT', 587))  # 587 is commonly used for TLS
+EMAIL_PORT = int(os.getenv('EMAIL_PORT'))
 EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS') == 'True'
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')

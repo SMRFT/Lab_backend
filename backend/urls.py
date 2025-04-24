@@ -19,6 +19,4 @@ from django.urls import path,include
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('labbackend.urls')),
-    path('_b_a_c_k_e_n_d_/Diagnostics/', include('labbackend.urls')),
-
 ]
