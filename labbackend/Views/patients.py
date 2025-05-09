@@ -10,6 +10,7 @@ from django.db.models import Max
 from datetime import datetime
 from django.forms.models import model_to_dict
 import json
+import re
 from ..models import Patient
 
 from datetime import datetime, timedelta
@@ -32,16 +33,15 @@ def create_patient(request):
     
 
 @api_view(['GET'])
-@permission_classes([HasRoleAndDataPermission])
 def get_latest_patient_id(request):
-    # Fetch the latest patient ID from the database
-    latest_patient = Patient.objects.aggregate(Max('patient_id'))
-    # If there's a patient ID, increment it, otherwise start with SD001
-    if latest_patient['patient_id__max']:
-        current_id = int(latest_patient['patient_id__max'].replace('SD', ''))
-        new_patient_id = f"SD{str(current_id + 1).zfill(3)}"
-    else:
-        new_patient_id = "SD001"
+    patients = Patient.objects.values_list('patient_id', flat=True)
+    max_id = 0
+    for pid in patients:
+        match = re.match(r'^SD(\d+)$', pid)
+        if match:
+            num = int(match.group(1))
+            max_id = max(max_id, num)
+    new_patient_id = f"SD{max_id + 1}"
     return Response({"patient_id": new_patient_id}, status=status.HTTP_200_OK)
 
 
@@ -239,6 +239,8 @@ def patient_overview(request):
     patients = Patient.objects.all()
     serializer = PatientSerializer(patients, many=True)  # Serialize the queryset
     return Response(serializer.data)
+
+
 
 @api_view(['GET'])
 @csrf_exempt

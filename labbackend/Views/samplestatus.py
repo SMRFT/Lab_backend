@@ -9,7 +9,7 @@ from django.utils import timezone
 from datetime import timedelta
 from datetime import datetime
 import os
-
+from pymongo import MongoClient
 #models
 from ..models import SampleStatus 
 from ..models import BarcodeTestDetails
@@ -209,9 +209,13 @@ def get_sample_collected(request):
 @permission_classes([HasRoleAndDataPermission])
 def update_sample_collected(request, patient_id):
     # MongoDB connection setup
-    password = quote_plus('Smrft@2024')
+    #password = quote_plus('Smrft@2024')
     # MongoDB connection with TLS certificate
-    client = MongoClient(os.getenv('DB_HOST'))
+    client = MongoClient(
+            'mongodb://admin:ifS2nTs6vm@103.205.141.208:27017/Lab?authSource=admin',
+            tls=True,
+            tlsAllowInvalidCertificates=True  # <-- bypass certificate verification
+        )
     db = client.Lab  # Database name
     collection = db.labbackend_samplestatus  # Collection name
     if request.method == "PUT":
@@ -227,12 +231,20 @@ def update_sample_collected(request, patient_id):
             # Parse testdetails as a Python list
             testdetails = json.loads(patient_sample.get('testdetails', '[]'))
             # Apply updates based on testIndex
+            
+            # Import the proper Django timezone module
+            from django.utils import timezone
+            import pytz
+            
+            # Configure IST timezone
+            ist_timezone = pytz.timezone('Asia/Kolkata')
+            
             for update in updates:
                 testIndex = update.get("testIndex")
                 new_status = update.get("samplestatus")
                 received_by = update.get("received_by")
                 rejected_by = update.get("rejected_by")
-                outsourced_by = update.get("oursourced_by")
+                outsourced_by = update.get("outsourced_by")  # Fixed typo in variable name
                 remarks = update.get("remarks")  # New field for rejection remarks
                 if testIndex is None or new_status is None:
                     return JsonResponse({"error": "samplestatus and testIndex are required"}, status=400)
@@ -242,9 +254,11 @@ def update_sample_collected(request, patient_id):
                 test_entry = testdetails[testIndex]
                 # Update the sample status and associated fields
                 test_entry['samplestatus'] = new_status
-                # Get current time in the correct timezone
-                current_time = timezone.now().astimezone(timezone.get_current_timezone())
+                
+                # Get current time in IST timezone
+                current_time = timezone.now().astimezone(ist_timezone)
                 formatted_time = current_time.strftime('%Y-%m-%d %H:%M:%S')  # Format the time
+                
                 if new_status == "Received":
                     test_entry['received_time'] = formatted_time
                     test_entry['received_by'] = received_by
@@ -253,8 +267,9 @@ def update_sample_collected(request, patient_id):
                     test_entry['rejected_by'] = rejected_by
                     test_entry['remarks'] = remarks  # Add rejection remarks
                 elif new_status == "Outsource":
-                    test_entry['oursourced_time'] = formatted_time
-                    test_entry['oursourced_by'] = outsourced_by
+                    test_entry['outsourced_time'] = formatted_time  # Fixed typo in field name
+                    test_entry['outsourced_by'] = outsourced_by  # Fixed typo in field name
+            
             # Save changes back to the database
             collection.update_one(
                 {"patient_id": patient_id},

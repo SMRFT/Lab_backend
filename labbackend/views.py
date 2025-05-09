@@ -1,5 +1,5 @@
 from rest_framework.response import Response
-from django.http import JsonResponse
+from django.http import JsonResponse , HttpResponse
 from datetime import datetime
 from django.views.decorators.http import require_http_methods
 from rest_framework.decorators import api_view
@@ -74,8 +74,12 @@ def patient_report(request):
         return JsonResponse({"error": "Invalid date format. Use YYYY-MM-DD."}, status=400)
     
     # MongoDB Connection Setup
-    password = quote_plus('Smrft@2024')
-    client = MongoClient(os.getenv('DB_HOST'))
+    #password = quote_plus('Smrft@2024')
+    client = MongoClient(
+        'mongodb://admin:ifS2nTs6vm@103.205.141.208:27017/Lab?authSource=admin',
+        tls=True,
+        tlsAllowInvalidCertificates=True  # <-- bypass certificate verification
+    )
     db = client.Lab
     patients_collection = db["labbackend_patient"]  # MongoDB collection
     
@@ -242,15 +246,18 @@ def patient_report(request):
 def get_test_details(request):
     try:
         # Securely encode password
-        password = quote_plus('Smrft@2024')
         # MongoDB connection with TLS certificate
-        client = MongoClient(os.getenv('DB_HOST'))
+        client = MongoClient(
+            'mongodb://admin:ifS2nTs6vm@103.205.141.208:27017/Lab?authSource=admin',
+            tls=True,
+            tlsAllowInvalidCertificates=True  # <-- bypass certificate verification
+        )
         db = client.Lab  # Database name
         collection = db.labbackend_testdetails  # Collection name
         if request.method == 'GET':
-            # Retrieve all documents in Testdetails collection
-            test_details = list(collection.find({}, {'_id': 0}))  # Exclude MongoDB's default _id field
-            return JsonResponse(test_details, safe=False, status=200)
+            # Retrieve only documents with status "Approved"
+            approved_tests = list(collection.find({"status": "Approved"}, {'_id': 0}))
+            return JsonResponse(approved_tests, safe=False, status=200)
         elif request.method == 'POST':
             try:
                 data = json.loads(request.body.decode('utf-8'))
@@ -289,6 +296,314 @@ def get_test_details(request):
     except Exception as e:
         print("Error:", e)
         return JsonResponse({'error': 'An error occurred'}, status=500)
+    
+
+@csrf_exempt
+def send_approval_email(request):
+    if request.method == 'POST':
+        try:
+            print("Received approval email request")
+            # Parse JSON request data
+            try:
+                data = json.loads(request.body.decode('utf-8'))
+                test_name = data.get('test_name')
+                recipient_email = data.get('recipient_email')
+                print(f"Test name from request: {test_name}")
+                print(f"Recipient email from request: {recipient_email}")
+                if not test_name:
+                    print("Error: Test name is missing")
+                    return JsonResponse({'error': 'Test name is required'}, status=400)
+            except json.JSONDecodeError as e:
+                print(f"JSON decode error: {e}")
+                return JsonResponse({'error': 'Invalid JSON'}, status=400)
+            # Connect to MongoDB to verify the test exists
+            try:
+                password = quote_plus('Smrft@2024')
+                client = MongoClient(
+                    'mongodb://admin:ifS2nTs6vm@103.205.141.208:27017/Lab?authSource=admin',
+                    tls=True,
+                    tlsAllowInvalidCertificates=True  # <-- bypass certificate verification
+                )
+                db = client.Lab
+                collection = db.labbackend_testdetails
+                # Check if test exists and get all test details
+                test = collection.find_one({'test_name': test_name})
+                if not test:
+                    print(f"Test not found: {test_name}")
+                    return JsonResponse({'error': 'Test not found'}, status=404)
+                # Convert ObjectId to string for JSON serialization if needed
+                if '_id' in test:
+                    test['_id'] = str(test['_id'])
+                print(f"Test found: {test_name}")
+            except Exception as mongo_err:
+                print(f"MongoDB connection error: {mongo_err}")
+                return JsonResponse({'error': f'Database error: {str(mongo_err)}'}, status=500)
+            # Generate approval URL
+            base_url = request.build_absolute_uri('/').rstrip('/')
+            approval_url = f"{base_url}/approve_test/?test_name={test_name}"
+            print(f"Generated approval URL: {approval_url}")
+            # For local development, override the URL if needed
+            if '127.0.0.1' in base_url or 'localhost' in base_url:
+                base_url = 'http://127.0.0.1:8000'
+            else:
+                base_url = 'https://lab.shinovadatabase.in'
+
+            approval_url = f"{base_url}/approve_test/?test_name={test_name}"
+
+            # Format test details for email
+            test_details_str = ""
+            for key, value in test.items():
+                if key != '_id' and key != 'parameters':
+                    test_details_str += f"{key.replace('_', ' ').title()}: {value}\n"
+            # Handle parameters separately if they exist and are in JSON format
+            if 'parameters' in test:
+                try:
+                    parameters = json.loads(test['parameters']) if isinstance(test['parameters'], str) else test['parameters']
+                    if parameters:
+                        test_details_str += "\nParameters:\n"
+                        for i, param in enumerate(parameters, 1):
+                            test_details_str += f"  Parameter {i}:\n"
+                            for param_key, param_value in param.items():
+                                test_details_str += f"    {param_key.replace('_', ' ').title()}: {param_value}\n"
+                except (json.JSONDecodeError, TypeError):
+                    test_details_str += f"\nParameters: {test.get('parameters', 'Not available')}\n"
+            # Compose email with HTML for better formatting and button
+            subject = f'Approval Request: Test {test_name}'
+            # HTML email template with direct approval button - improved for spam prevention
+            html_message = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Test Approval Request</title>
+                <style>
+                    body {{ font-family: Arial, sans-serif; margin: 20px; color: #333333; }}
+                    .container {{ max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }}
+                    .header {{ background-color: #F5F5F5; padding: 10px; border-radius: 5px; margin-bottom: 20px; }}
+                    .test-details {{ white-space: pre-line; margin-bottom: 20px; }}
+                    .button {{ display: inline-block; padding: 10px 20px; background-color: #4CAF50; color: white;
+                               text-decoration: none; border-radius: 5px; font-weight: bold; }}
+                    .footer {{ font-size: 12px; color: #666; margin-top: 30px; border-top: 1px solid #ddd; padding-top: 10px; }}
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="header">
+                        <h2>Lab Test Approval Request</h2>
+                    </div>
+                    <p>Hello,</p>
+                    <p>A new lab test has been submitted and requires your approval. Here are the details:</p>
+                    <div class="test-details">
+                        {test_details_str}
+                    </div>
+                    <p>To approve this test, please click the button below:</p>
+                    <p><a href="{approval_url}" class="button">Approve Test</a></p>
+                    <div class="footer">
+                        <p>This is an automated message from Shanmuga Diagnostics Laboratory System. If you did not request this approval, please ignore this email.</p>
+                        <p>© 2025 Shanmuga Diagnostics. All rights reserved.</p>
+                    </div>
+                </div>
+            </body>
+            </html>
+            """
+            # Plain text version for email clients that don't support HTML
+            plain_message = f"""
+            Lab Test Approval Request
+            Hello,
+            A new lab test has been submitted and requires your approval. Here are the details:
+            {test_details_str}
+            To approve this test, please click on the following link:
+            {approval_url}
+            This is an automated message from Shanmuga Diagnostics System. If you did not request this approval, please ignore this email.
+            © 2025 Shanmuga Diagnostics. All rights reserved.
+            """
+            # Create the recipient list
+            # Use provided email if available, otherwise use default
+            recipient_list = []
+            if recipient_email:
+                recipient_list.append(recipient_email)
+
+            # Always include default emails
+            default_emails = ['drprabusankar@smrft.org', 'drpriya@smrft.org']
+            for email in default_emails:
+                if email not in recipient_list:
+                    recipient_list.append(email)
+
+            # Send email using smtplib directly for more control
+            try:
+                print(f"Sending email to: {recipient_list}")
+                import smtplib
+                from email.mime.multipart import MIMEMultipart
+                from email.mime.text import MIMEText
+                from email.utils import formatdate, make_msgid
+                # Set up the SMTP server
+                smtp_server = "smtp.gmail.com"
+                smtp_port = 587
+                smtp_username = settings.EMAIL_HOST_USER
+                smtp_password = settings.EMAIL_HOST_PASSWORD  # Make sure this is an app password if using Gmail
+                # Create message container
+                msg = MIMEMultipart('alternative')
+                msg['Subject'] = subject
+                msg['From'] = f"Shanmuga Diagnostics<{smtp_username}>"
+                msg['To'] = ", ".join(recipient_list)
+                msg['Date'] = formatdate(localtime=True)
+                msg['Message-ID'] = make_msgid(domain='shinovadatabase.in')
+                # Add custom headers to reduce chance of being marked as spam
+                msg.add_header('X-Priority', '1')  # 1 = High priority
+                msg.add_header('X-MSMail-Priority', 'High')
+                msg.add_header('Importance', 'High')
+                msg.add_header('X-Mailer', 'Shanmuga Diagnostics Approval System')
+                # Record-Route might help with deliverability
+                msg.add_header('Return-Path', smtp_username)
+                # Attach parts
+                part1 = MIMEText(plain_message, 'plain')
+                part2 = MIMEText(html_message, 'html')
+                msg.attach(part1)
+                msg.attach(part2)
+                # Create SMTP session
+                server = smtplib.SMTP(smtp_server, smtp_port)
+                server.ehlo()
+                server.starttls()
+                server.ehlo()
+                server.login(smtp_username, smtp_password)
+                # Send email
+                server.sendmail(smtp_username, recipient_list, msg.as_string())
+                server.quit()
+                print("Email sent successfully using direct SMTP")
+                return JsonResponse({'message': 'Approval email sent successfully'}, status=200)
+            except Exception as email_err:
+                print(f"Email sending error: {email_err}")
+                return JsonResponse({'error': f'Email sending failed: {str(email_err)}'}, status=500)
+        except Exception as e:
+            print(f"General error sending approval email: {e}")
+            return JsonResponse({'error': str(e)}, status=500)
+    print("Invalid request method for send_approval_email")
+    return JsonResponse({'error': 'Invalid request method'}, status=405)
+
+
+# For handling test approval
+@csrf_exempt
+def approve_test(request):
+    if request.method == 'PATCH':
+        try:
+            data = json.loads(request.body.decode('utf-8'))
+            test_name = data.get('test_name')
+           
+            if not test_name:
+                return JsonResponse({'error': 'Test name is required'}, status=400)
+           
+            # Connect to MongoDB
+            password = quote_plus('Smrft@2024')
+            client = MongoClient(
+                'mongodb://admin:ifS2nTs6vm@103.205.141.208:27017/Lab?authSource=admin',
+                tls=True,
+                tlsAllowInvalidCertificates=True  # <-- bypass certificate verification
+            )
+            db = client.Lab
+            collection = db.labbackend_testdetails
+           
+            # Update test status to "Approved"
+            result = collection.update_one(
+                {'test_name': test_name},
+                {'$set': {'status': 'Approved'}}
+            )
+           
+            if result.modified_count > 0:
+                return JsonResponse({'message': 'Test approved successfully'}, status=200)
+            else:
+                return JsonResponse({'error': 'Test not found or already approved'}, status=404)
+               
+        except Exception as e:
+            print(f"Error approving test: {e}")
+            return JsonResponse({'error': str(e)}, status=500)
+   
+    # For GET requests with test_name as query parameter (from email link)
+    elif request.method == 'GET':
+        try:
+            # Get test_name from query parameters
+            test_name = request.GET.get('test_name')
+           
+            if not test_name:
+                return JsonResponse({'error': 'Test name is required'}, status=400)
+           
+            # Connect to MongoDB
+            password = quote_plus('Smrft@2024')
+            client = MongoClient(
+                'mongodb://admin:ifS2nTs6vm@103.205.141.208:27017/Lab?authSource=admin',
+                tls=True,
+                tlsAllowInvalidCertificates=True  # <-- bypass certificate verification
+            )
+            db = client.Lab
+            collection = db.labbackend_testdetails
+           
+            # Find and update the test with matching name
+            result = collection.update_one(
+                {'test_name': test_name},
+                {'$set': {'status': 'Approved'}}
+            )
+           
+            if result.modified_count > 0:
+                # Return a simple HTML response confirming approval
+                html_response = """
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Test Approval Confirmation</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; margin: 40px; text-align: center; background-color: #f5f5f5; }
+                        .container { max-width: 600px; margin: 0 auto; padding: 30px; background-color: white;
+                                    border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+                        .success { color: #4caf50; font-size: 28px; margin-bottom: 20px; }
+                        .icon { font-size: 50px; color: #4caf50; margin-bottom: 20px; }
+                        .button { display: inline-block; padding: 10px 20px; background-color: #4CAF50; color: white;
+                                text-decoration: none; border-radius: 5px; font-weight: bold; margin-top: 20px; }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="icon">✓</div>
+                        <div class="success">Test Approved Successfully</div>
+                        <p>The test has been approved and is now active in the system.</p>
+                        <p>Test Name: <strong>""" + test_name + """</strong></p>
+                        <p>Status: <strong>Approved</strong></p>
+                        <p>You can close this window.</p>
+                    </div>
+                </body>
+                </html>
+                """
+                return HttpResponse(html_response, content_type='text/html')
+            else:
+                html_error = """
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Test Approval Error</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; margin: 40px; text-align: center; background-color: #f5f5f5; }
+                        .container { max-width: 600px; margin: 0 auto; padding: 30px; background-color: white;
+                                    border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+                        .error { color: #f44336; font-size: 28px; margin-bottom: 20px; }
+                        .icon { font-size: 50px; color: #f44336; margin-bottom: 20px; }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="icon">✗</div>
+                        <div class="error">Approval Failed</div>
+                        <p>The test was not found or has already been approved.</p>
+                        <p>Test Name: <strong>""" + test_name + """</strong></p>
+                        <p>Please contact the administrator for assistance.</p>
+                    </div>
+                </body>
+                </html>
+                """
+                return HttpResponse(html_error, content_type='text/html', status=404)
+        except Exception as e:
+            print(f"Error processing approval: {e}")
+            return JsonResponse({'error': str(e)}, status=500)
+   
+    return JsonResponse({'error': 'Invalid request method'}, status=405)
 
 @api_view(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])
 @csrf_exempt
@@ -325,10 +640,14 @@ def handle_patch_request(request):
 def get_test_parameters(request, test_name):
     try:
         # MongoDB connection setup
-        password = quote_plus('Smrft@2024')
+        #password = quote_plus('Smrft@2024')
 
         # MongoDB connection with TLS certificate
-        client = MongoClient(os.getenv('DB_HOST'))
+        client = MongoClient(
+            'mongodb://admin:ifS2nTs6vm@103.205.141.208:27017/Lab?authSource=admin',
+            tls=True,
+            tlsAllowInvalidCertificates=True  # <-- bypass certificate verification
+        )
 
         db = client.Lab  # Database name
         collection = db.labbackend_testdetails
@@ -341,6 +660,7 @@ def get_test_parameters(request, test_name):
     except Exception as e:
         print("Error fetching parameters:", e)
         return JsonResponse({"error": "Failed to fetch parameters"}, status=500)
+
     
 
 
@@ -348,9 +668,13 @@ def get_test_parameters(request, test_name):
 @permission_classes([HasRoleAndDataPermission])
 def compare_test_details(request):
     # MongoDB connection setup
-    password = quote_plus('Smrft@2024')
+    #password = quote_plus('Smrft@2024')
         # MongoDB connection with TLS certificate
-    client = MongoClient(os.getenv('DB_HOST'))
+    client = MongoClient(
+            'mongodb://admin:ifS2nTs6vm@103.205.141.208:27017/Lab?authSource=admin',
+            tls=True,
+            tlsAllowInvalidCertificates=True  # <-- bypass certificate verification
+        )
     db = client.Lab  # Database name
     collection = db.labbackend_testdetails  # Collection name
     # Retrieve the date and patient ID from the request
@@ -490,6 +814,7 @@ def save_test_value(request):
             patient = Patient.objects.get(patient_id=payload['patient_id'])
             test_details_json = payload.get("testdetails", [])
             barcode=payload.get("barcode")
+            verified_by = payload.get('verified_by')
             if not isinstance(test_details_json, list) or not test_details_json:
                 return Response({"error": "Invalid test details format"}, status=status.HTTP_400_BAD_REQUEST)
             test_value_record, created = TestValue.objects.get_or_create(
@@ -500,6 +825,7 @@ def save_test_value(request):
                     'age': patient.age,
                     "barcode": barcode,
                     'testdetails': test_details_json,
+                    'verified_by': verified_by,
                 }
             )
             existing_test_details = test_value_record.testdetails if not created else []
@@ -536,7 +862,11 @@ def save_test_value(request):
             # MongoDB connection
         password = quote_plus('Smrft@2024')
         # MongoDB connection with TLS certificate
-        client = MongoClient(os.getenv('DB_HOST'))
+        client = MongoClient(
+            'mongodb://admin:ifS2nTs6vm@103.205.141.208:27017/Lab?authSource=admin',
+            tls=True,
+            tlsAllowInvalidCertificates=True  # <-- bypass certificate verification
+        )
         db = client.Lab  # Database name
         collection = db.labbackend_testvalue
         # Extract parameters from the request
@@ -599,9 +929,13 @@ def save_test_value(request):
 @permission_classes([HasRoleAndDataPermission])
 def update_test_value(request):
     # MongoDB connection
-    password = quote_plus('Smrft@2024')
+    #password = quote_plus('Smrft@2024')
     # MongoDB connection with TLS certificate
-    client = MongoClient(os.getenv('DB_HOST'))
+    client = MongoClient(
+            'mongodb://admin:ifS2nTs6vm@103.205.141.208:27017/Lab?authSource=admin',
+            tls=True,
+            tlsAllowInvalidCertificates=True  # <-- bypass certificate verification
+        )
     db = client.Lab  # Database name
     collection = db.labbackend_testvalue
     try:
@@ -770,7 +1104,6 @@ def get_test_values(request):
             for test in test_values
         ]
         return JsonResponse(data, safe=False)
-
 
 @api_view(['GET'])
 @permission_classes([HasRoleAndDataPermission])
@@ -948,18 +1281,13 @@ def get_patient_test_details(request):
     patient_id = request.GET.get('patient_id')
     if not patient_id:
         return JsonResponse({'error': 'Patient ID is required'}, status=400)
-
     try:
-        # Fetch TestValue, SampleStatus, and BarcodeTestDetails based on patient_id
         test_values = TestValue.objects.filter(patient_id=patient_id)
         sample_status = SampleStatus.objects.filter(patient_id=patient_id)
         barcode_details = BarcodeTestDetails.objects.filter(patient_id=patient_id).first()
-
-        # If no test values are found
+        patient = Patient.objects.filter(patient_id=patient_id).first()
         if not test_values:
             return JsonResponse({'error': 'Test values not found for the given patient ID'}, status=404)
-
-        # Parse barcodes from BarcodeTestDetails
         barcodes = []
         if barcode_details:
             try:
@@ -967,42 +1295,35 @@ def get_patient_test_details(request):
                 barcodes = [test.get("barcode") for test in tests if test.get("barcode")]
             except json.JSONDecodeError:
                 barcodes = []
-
-        # Prepare patient details
         patient_details = {
             "patient_id": test_values[0].patient_id,
             "patientname": test_values[0].patientname,
             "age": test_values[0].age,
             "date": test_values[0].date,
             "barcodes": barcodes,
-            "testdetails": []
+            "testdetails": [],
+            "gender": patient.gender if patient else "N/A",
+            "refby": patient.refby if patient else "N/A",
+            "B2B": patient.B2B,
+            "verified_by": test_values[0].verified_by,
         }
-
-        # Extract test details from TestValue and SampleStatus
         for test in test_values[0].testdetails:
             testname = test.get("testname")
             department = test.get("department", "N/A")
             parameters = test.get("parameters", [])
-
-            # Fetch corresponding SampleStatus for this testname
             status = next(
                 (status for status in sample_status[0].testdetails if status.get("testname") == testname), None)
             samplecollected_time = status.get("samplecollected_time") if status else None
             received_time = status.get("received_time") if status else None
-
-            # Construct test detail dictionary
             test_detail = {
                 "department": department,
                 "testname": testname,
                 "samplecollected_time": samplecollected_time,
                 "received_time": received_time
             }
-
-            # If parameters exist, only include testname and parameters
             if parameters:
                 test_detail["parameters"] = parameters
             else:
-                # Include these fields only if there are no parameters
                 test_detail.update({
                     "method": test.get("method", "N/A"),
                     "specimen_type": test.get("specimen_type", "N/A"),
@@ -1010,11 +1331,8 @@ def get_patient_test_details(request):
                     "unit": test.get("unit", "N/A"),
                     "reference_range": test.get("reference_range", "N/A")
                 })
-
             patient_details["testdetails"].append(test_detail)
-
         return JsonResponse(patient_details, safe=False)
-
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
   
@@ -1116,11 +1434,11 @@ def patient_test_status(request):
 @permission_classes([HasRoleAndDataPermission])
 def overall_report(request):
     # MongoDB Connection Setup
-    password = quote_plus('Smrft@2024')
+    #password = quote_plus('Smrft@2024')
     client = MongoClient(
-        f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
+        'mongodb://admin:ifS2nTs6vm@103.205.141.208:27017/Lab?authSource=admin',
         tls=True,
-        tlsCAFile=certifi.where()
+        tlsAllowInvalidCertificates=True  # <-- bypass certificate verification
     )
     db = client.Lab
     patients_collection = db["labbackend_patient"]  # MongoDB collection
@@ -1252,6 +1570,7 @@ def overall_report(request):
                 "gender": patient.get("gender", "N/A"),
                 "refby": patient.get("refby", "N/A"),
                 "age": age_combined,
+                "segment": patient.get("segment", "N/A"),
                 "b2b": patient.get("B2B", "N/A"),
                 "sample_collector": patient.get("sample_collector", "N/A"),
                 "salesMapping": patient.get("salesMapping", "N/A"),
@@ -1262,6 +1581,9 @@ def overall_report(request):
                 "payment_method": partial_payment_method,
                 "test_names": testnames,
                 "no_of_tests": no_of_tests,
+                "bill_no": patient.get("bill_no", "N/A"),
+                "registeredby": patient.get("registeredby", "N/A"),
+
             })
         return JsonResponse(formatted_data, safe=False)
     return JsonResponse({"error": "Invalid request method. Only GET is allowed."}, status=405)

@@ -211,7 +211,6 @@ class ClinicalNameViewSet(viewsets.ModelViewSet):
         
 
 
-
 @api_view(['GET'])
 @permission_classes([HasRoleAndDataPermission])
 def get_clinicalname(request):

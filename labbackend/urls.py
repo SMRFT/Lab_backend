@@ -116,5 +116,7 @@ urlpatterns = [
     path('sample_collector_location/', sample_collector_location, name='save_collector_location'),
     path('get_clinicalname/', get_clinicalname, name='get_clinicalname'),
     path('patients-by-date/', patients_by_date),
+    path('send_approval_email/', views.send_approval_email, name='send_approval_email'),
+    path('approve_test/', views.approve_test, name='approve_test'),
 
 ]

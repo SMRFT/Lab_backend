@@ -107,11 +107,19 @@ def get_patient_tests(request, patient_id, date):
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
+
 @api_view(['PATCH'])
 @permission_classes([HasRoleAndDataPermission])
+@api_view(['PATCH'])
 def update_billing(request, patient_id):
+    #password = quote_plus('Smrft@2024')
     password = quote_plus('Smrft@2024')
-    client = MongoClient(os.getenv('DB_HOST'))
+    client = MongoClient(
+            'mongodb://admin:ifS2nTs6vm@103.205.141.208:27017/Lab?authSource=admin',
+            tls=True,
+            tlsAllowInvalidCertificates=True  # <-- bypass certificate verification
+        )
     db = client.Lab
     collection = db['labbackend_patient']
 
