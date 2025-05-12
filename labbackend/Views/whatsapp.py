@@ -12,14 +12,19 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.permissions import AllowAny
 from pyauth.auth import HasRoleAndDataPermission
+from ..auth.permissions import SkipPermissionsIfDisabled
+
+import os
+from dotenv import load_dotenv
+load_dotenv()
 # MongoDB Connection
-client = MongoClient("mongodb://admin:ifS2nTs6vm@103.205.141.208:27017/Lab?authSource=admin")
+client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
 db = client["Lab"]
 fs = gridfs.GridFS(db)
 
 @api_view(['POST'])
 @csrf_exempt
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def upload_pdf_to_gridfs(request):
     if request.method == "POST" and request.FILES.get("file"):
         file = request.FILES["file"]
@@ -32,7 +37,7 @@ from bson import ObjectId
 
 @api_view(['GET'])
 @csrf_exempt
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_pdf_from_gridfs(request, file_id):
     try:
         file = fs.get(ObjectId(file_id))
@@ -45,7 +50,7 @@ def get_pdf_from_gridfs(request, file_id):
 
 @api_view(['POST'])
 @csrf_exempt
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def send_whatsapp_message(request):
     if request.method == "POST":
         data = json.loads(request.body)

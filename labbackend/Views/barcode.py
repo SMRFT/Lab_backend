@@ -15,10 +15,10 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.permissions import AllowAny
 from pyauth.auth import HasRoleAndDataPermission
-
+from ..auth.permissions import SkipPermissionsIfDisabled
 
 @api_view(['GET'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_existing_barcode(request):
     patient_id = request.GET.get('patient_id')
     date = request.GET.get('date')
@@ -60,7 +60,7 @@ def get_existing_barcode(request):
 
 logger = logging.getLogger(__name__)
 @api_view(['GET'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_max_barcode(request):
     try:
         max_barcode = 0  # Initialize the maximum barcode value
@@ -100,7 +100,7 @@ def get_max_barcode(request):
 
 @api_view(["POST"])
 @csrf_exempt
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def save_barcodes(request):
     if request.method == "POST":
         try:
@@ -144,7 +144,7 @@ def save_barcodes(request):
             return JsonResponse({'error': str(e)}, status=400)
         
 @api_view(["GET"])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_barcode_by_date(request):
     date = request.GET.get('date')  # Expecting 'YYYY-MM-DD'
     if date:
@@ -201,7 +201,7 @@ def get_barcode_by_date(request):
 
 
 @api_view(["GET"])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def check_barcode(request):
     patient_id = request.GET.get('patient_id')
     date = request.GET.get('date')

@@ -14,7 +14,7 @@ from pymongo import MongoClient
 from ..models import SampleStatus 
 from ..models import BarcodeTestDetails
 
-
+from ..auth.permissions import SkipPermissionsIfDisabled
 #auth
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -25,7 +25,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 @api_view(['GET'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_samplepatients_by_date(request):
     date = request.GET.get('date')
     if not date:
@@ -58,7 +58,7 @@ def get_samplepatients_by_date(request):
 
 @api_view(['POST'])
 @csrf_exempt
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def sample_status(request):
     if request.method == 'POST':
         try:
@@ -102,11 +102,11 @@ def sample_status(request):
 
 @api_view(['PUT'])
 @csrf_exempt
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def update_sample_status(request, patient_id):
     password = quote_plus('Smrft@2024')
     # MongoDB connection with TLS certificate
-    client = MongoClient(os.getenv('DB_HOST'))
+    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
     db = client.Lab  # Database name
     collection = db.labbackend_samplestatus
     if request.method == 'PUT':
@@ -159,7 +159,7 @@ def update_sample_status(request, patient_id):
 
 @api_view(['GET'])
 @csrf_exempt
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_sample_collected(request):
     if request.method == "GET":
         try:
@@ -206,16 +206,12 @@ def get_sample_collected(request):
 
 @api_view(['PUT'])
 @csrf_exempt
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def update_sample_collected(request, patient_id):
     # MongoDB connection setup
     #password = quote_plus('Smrft@2024')
     # MongoDB connection with TLS certificate
-    client = MongoClient(
-            'mongodb://admin:ifS2nTs6vm@103.205.141.208:27017/Lab?authSource=admin',
-            tls=True,
-            tlsAllowInvalidCertificates=True  # <-- bypass certificate verification
-        )
+    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
     db = client.Lab  # Database name
     collection = db.labbackend_samplestatus  # Collection name
     if request.method == "PUT":
@@ -280,7 +276,7 @@ def update_sample_collected(request, patient_id):
             return JsonResponse({"error": str(e)}, status=500)
 
 @api_view(['GET'])       
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_received_samples(request):
     # Get patient_id and date from the query parameters
     patient_id = request.GET.get('patient_id')

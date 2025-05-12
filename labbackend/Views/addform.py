@@ -15,9 +15,11 @@ from ..serializers import RefBySerializer
 #auth
 from rest_framework.decorators import api_view, permission_classes
 from pyauth.auth import HasRoleAndDataPermission
+from ..auth.permissions import SkipPermissionsIfDisabled
+
 
 @api_view(['GET', 'POST'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def sample_collector(request):
     if request.method == 'POST':
         serializer = SampleCollectorSerializer(data=request.data)
@@ -33,7 +35,7 @@ def sample_collector(request):
 
 
 @api_view(['GET', 'POST'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def refby(request):
     if request.method == 'POST':
         serializer = RefBySerializer(data=request.data)

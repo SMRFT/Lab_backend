@@ -11,21 +11,34 @@ import math
 from django.db.models import Q
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.models import User
-
-
+from urllib.parse import quote_plus
+from ..auth.permissions import SkipPermissionsIfDisabled
 from django.contrib.auth.hashers import make_password
 from ..models import SampleCollectorLocation
-
+import pytz
 import json
+import os
+from django.conf import settings
+
+from bson import ObjectId
+from django.utils import timezone 
+from ..serializers import SampleCollectorLocationSerializer
+from pymongo import MongoClient
 #auth
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.permissions import AllowAny
 from pyauth.auth import HasRoleAndDataPermission
 
+from dotenv import load_dotenv
+load_dotenv()
+
+
+TIME_ZONE = 'Asia/Kolkata'
+IST = pytz.timezone(TIME_ZONE)
 @api_view(['GET', 'POST', 'PUT'])
 @csrf_exempt
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def sample_collector_location(request):
     """
     Handle GET, POST, PUT, and PATCH requests for sample collector location
@@ -59,11 +72,7 @@ def sample_collector_location(request):
             client = None
             try:
                 password = quote_plus('Smrft@2024')
-                client = MongoClient(
-                    'mongodb://admin:ifS2nTs6vm@103.205.141.208:27017/Lab?authSource=admin',
-                    tls=True,
-                    tlsAllowInvalidCertificates=True  # <-- bypass certificate verification
-                )
+                client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
                 db = client.Lab
                 collection = db['labbackend_samplecollectorlocation']
                 
@@ -254,11 +263,7 @@ def sample_collector_location(request):
             client = None
             try:
                 password = quote_plus('Smrft@2024')
-                client = MongoClient(
-                    'mongodb://admin:ifS2nTs6vm@103.205.141.208:27017/Lab?authSource=admin',
-                    tls=True,
-                    tlsAllowInvalidCertificates=True  # <-- bypass certificate verification
-                )
+                client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
                 db = client.Lab
                 collection = db['labbackend_samplecollectorlocation']
                 
@@ -418,11 +423,7 @@ def sample_collector_location(request):
             client = None
             try:
                 password = quote_plus('Smrft@2024')
-                client = MongoClient(
-                    'mongodb://admin:ifS2nTs6vm@103.205.141.208:27017/Lab?authSource=admin',
-                    tls=True,
-                    tlsAllowInvalidCertificates=True  # <-- bypass certificate verification
-                )
+                client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
                 db = client.Lab
                 collection = db['labbackend_samplecollectorlocation']
                 

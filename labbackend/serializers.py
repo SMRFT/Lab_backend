@@ -135,3 +135,9 @@ class ClinicalNameSerializer(serializers.ModelSerializer):
         }
 
 
+from .models import SampleCollectorLocation
+class SampleCollectorLocationSerializer(serializers.ModelSerializer):
+    id = ObjectIdField(read_only=True)
+    class Meta:
+        model = SampleCollectorLocation
+        fields = '__all__'

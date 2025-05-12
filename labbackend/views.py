@@ -29,6 +29,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.permissions import AllowAny
 from pyauth.auth import HasRoleAndDataPermission
+from .auth.permissions import SkipPermissionsIfDisabled
 #Models
 from .models import Patient
 from .models import SampleStatus
@@ -42,7 +43,6 @@ from .serializers import TestValueSerializer
 
 import os
 from dotenv import load_dotenv
-
 load_dotenv()
 
 
@@ -59,7 +59,7 @@ def convert_to_float(value):
         return 0.0
 
 @api_view(['GET'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def patient_report(request):
     start_date_str = request.GET.get('start_date')
     end_date_str = request.GET.get('end_date')
@@ -242,7 +242,7 @@ def patient_report(request):
 
 @api_view(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])
 @csrf_exempt  # Allow GET, POST, and PATCH requests without CSRF protection
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_test_details(request):
     try:
         # Securely encode password
@@ -299,6 +299,7 @@ def get_test_details(request):
     
 
 @csrf_exempt
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def send_approval_email(request):
     if request.method == 'POST':
         try:
@@ -484,6 +485,7 @@ def send_approval_email(request):
 
 # For handling test approval
 @csrf_exempt
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def approve_test(request):
     if request.method == 'PATCH':
         try:
@@ -607,13 +609,13 @@ def approve_test(request):
 
 @api_view(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])
 @csrf_exempt
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def handle_patch_request(request):
     try:
         # MongoDB connection setup inside the function
         password = quote_plus('Smrft@2024')
         # MongoDB connection with TLS certificate
-        client = MongoClient(os.getenv('DB_HOST'))
+        client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
         db = client.Lab  # Database name
         collection = db.labbackend_testdetails  # Collection name
         data = json.loads(request.body.decode('utf-8'))
@@ -637,6 +639,7 @@ def handle_patch_request(request):
 
 @api_view(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])
 @csrf_exempt
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_test_parameters(request, test_name):
     try:
         # MongoDB connection setup
@@ -744,7 +747,7 @@ def compare_test_details(request):
     return JsonResponse({'data': test_data})
 
 @api_view(['GET'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_samplestatus_testvalue(request):
     try:
         # Get the date from the query parameter
@@ -786,7 +789,7 @@ def get_samplestatus_testvalue(request):
 
 
 @api_view(['GET', 'POST','PATCH'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def save_test_value(request):
     if request.method == 'GET':
         patient_id = request.GET.get('patient_id')
@@ -859,14 +862,8 @@ def save_test_value(request):
             print("Error in POST method:", str(e))  # Debugging
             return Response({"error": "An error occurred"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     elif request.method == 'PATCH':
-            # MongoDB connection
-        password = quote_plus('Smrft@2024')
         # MongoDB connection with TLS certificate
-        client = MongoClient(
-            'mongodb://admin:ifS2nTs6vm@103.205.141.208:27017/Lab?authSource=admin',
-            tls=True,
-            tlsAllowInvalidCertificates=True  # <-- bypass certificate verification
-        )
+        client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
         db = client.Lab  # Database name
         collection = db.labbackend_testvalue
         # Extract parameters from the request
@@ -926,16 +923,12 @@ def save_test_value(request):
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
 @api_view(['PATCH'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def update_test_value(request):
     # MongoDB connection
     #password = quote_plus('Smrft@2024')
     # MongoDB connection with TLS certificate
-    client = MongoClient(
-            'mongodb://admin:ifS2nTs6vm@103.205.141.208:27017/Lab?authSource=admin',
-            tls=True,
-            tlsAllowInvalidCertificates=True  # <-- bypass certificate verification
-        )
+    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
     db = client.Lab  # Database name
     collection = db.labbackend_testvalue
     try:
@@ -990,13 +983,13 @@ TIME_ZONE = 'Asia/Kolkata'
 IST = pytz.timezone(TIME_ZONE)
 
 @api_view(['PATCH'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def update_dispatch_status(request, patient_id):
     # MongoDB connection
     password = quote_plus('Smrft@2024')
 
     # MongoDB connection with TLS certificate
-    client = MongoClient(os.getenv('DB_HOST'))
+    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
 
     db = client.Lab  # Database name
     collection = db.labbackend_testvalue
@@ -1036,7 +1029,7 @@ def update_dispatch_status(request, patient_id):
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_test_report(request):
     day = request.GET.get('day')
     month = request.GET.get('month')
@@ -1062,7 +1055,7 @@ def get_test_report(request):
 
 
 @api_view(['GET'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_test_values(request):
     # Get date from request parameters
     date = request.GET.get('date')
@@ -1106,7 +1099,7 @@ def get_test_values(request):
         return JsonResponse(data, safe=False)
 
 @api_view(['GET'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def test_values(request):
     # Get the date parameter from the request
     date_str = request.GET.get('date')
@@ -1125,12 +1118,12 @@ def test_values(request):
 
 @api_view(["PATCH"])
 @csrf_exempt
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def approve_test_detail(request, patient_id, test_index):
     # MongoDB connection
     password = quote_plus('Smrft@2024')
     # MongoDB connection with TLS certificate
-    client = MongoClient(os.getenv('DB_HOST'))
+    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
     db = client.Lab  # Database name
     collection = db.labbackend_testvalue  # Your collection name
     # Log the incoming request body
@@ -1179,12 +1172,12 @@ def approve_test_detail(request, patient_id, test_index):
     
 @api_view(['PATCH'])
 @csrf_exempt
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def rerun_test_detail(request, patient_id, test_index):
     # MongoDB connection
     password = quote_plus('Smrft@2024')
         # MongoDB connection with TLS certificate
-    client = MongoClient(os.getenv('DB_HOST'))
+    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
     db = client.Lab  # Database name
     collection = db.labbackend_testvalue  # Your collection name
     """Rerun the test detail at the given index for the specified patient."""
@@ -1226,13 +1219,13 @@ def rerun_test_detail(request, patient_id, test_index):
 
 @csrf_exempt
 @api_view(['PATCH'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def update_test_detail(request, patient_id):
     # MongoDB connection
     password = quote_plus('Smrft@2024')
 
         # MongoDB connection with TLS certificate
-    client = MongoClient(os.getenv('DB_HOST'))
+    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
 
     db = client.Lab  # Database name
     collection = db.labbackend_testvalue  # Your collection name
@@ -1276,7 +1269,7 @@ def update_test_detail(request, patient_id):
 
 
 @api_view(['GET'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_patient_test_details(request):
     patient_id = request.GET.get('patient_id')
     if not patient_id:
@@ -1337,7 +1330,7 @@ def get_patient_test_details(request):
         return JsonResponse({'error': str(e)}, status=500)
   
 @api_view(['GET'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def patient_test_status(request):
     try:
         patient_ids = request.GET.getlist('patient_id')  # Accept multiple patient IDs
@@ -1429,25 +1422,30 @@ def patient_test_status(request):
         print(traceback.format_exc())
         return JsonResponse({'error': str(e)}, status=500)
 
+
+
+from django.http import JsonResponse
+from pymongo import MongoClient
+from datetime import datetime, timedelta
+import os, json, traceback
+from django.utils.timezone import make_aware
+from .models import SampleStatus, TestValue
+
 @api_view(['GET','PATCH'])
 @csrf_exempt
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def overall_report(request):
-    # MongoDB Connection Setup
-    #password = quote_plus('Smrft@2024')
-    client = MongoClient(
-        'mongodb://admin:ifS2nTs6vm@103.205.141.208:27017/Lab?authSource=admin',
-        tls=True,
-        tlsAllowInvalidCertificates=True  # <-- bypass certificate verification
-    )
-    db = client.Lab
-    patients_collection = db["labbackend_patient"]  # MongoDB collection
-    if request.method == "GET":
-        # Get query parameters
-        patient_id = request.GET.get("patient_id", None)
-        from_date = request.GET.get("from_date", None)
-        to_date = request.GET.get("to_date", None)
-        # Parse date filters
+    try:
+        # MongoDB setup
+        client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
+        db = client.Lab
+        patients_collection = db["labbackend_patient"]
+
+        # Date filters
+        from_date = request.GET.get("from_date")
+        to_date = request.GET.get("to_date")
+        patient_id = request.GET.get("patient_id")
+
         try:
             if from_date:
                 from_date = datetime.strptime(from_date, "%Y-%m-%d")
@@ -1455,121 +1453,161 @@ def overall_report(request):
                 to_date = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
         except ValueError:
             return JsonResponse({"error": "Invalid date format. Use YYYY-MM-DD."}, status=400)
-        # Fetch patient data from MongoDB
+
+        # Build MongoDB query
         query = {}
         if patient_id:
             query["patient_id"] = patient_id
         if from_date and to_date:
             query["date"] = {"$gte": from_date, "$lt": to_date}
+
         patients = list(patients_collection.find(query))
         if not patients:
-            return JsonResponse([], safe=False)  # Return empty list if no data found
+            return JsonResponse([], safe=False)
+
+        patient_ids = [p.get("patient_id") for p in patients if p.get("patient_id")]
+
+        # Status data: bulk fetch from SQL DBs
+        from_datetime = make_aware(from_date or datetime.now())
+        to_datetime = make_aware((to_date - timedelta(days=1)) if to_date else datetime.now().replace(hour=23, minute=59, second=59))
+
+        sample_status_records = SampleStatus.objects.filter(
+            patient_id__in=patient_ids,
+            date__range=(from_datetime, to_datetime)
+        ).values("patient_id", "testdetails")
+
+        test_value_records = TestValue.objects.filter(
+            patient_id__in=patient_ids,
+            date__range=(from_datetime, to_datetime)
+        ).values("patient_id", "barcode", "testdetails")
+
+        # Organize status data
+        sample_status_map = {}
+        for record in sample_status_records:
+            sample_status_map.setdefault(record["patient_id"], []).extend(record["testdetails"])
+
+        test_value_map = {}
+        for record in test_value_records:
+            pid = record["patient_id"]
+            test_value_map.setdefault(pid, {"barcode": record["barcode"], "testdetails": []})
+            test_value_map[pid]["testdetails"].extend(record["testdetails"])
+
+        # Final result
         formatted_data = []
+
         for patient in patients:
-            # Extract values safely
-            age_combined = f"{patient.get('age', 'N/A')} {patient.get('age_type', '')}"
-            discount = int(patient.get('discount', 0) or 0)
-            # Parse test names
-            test_list = []
-            if isinstance(patient.get("testname"), str) and patient["testname"].strip():
-                try:
-                    test_list = json.loads(patient["testname"])
-                except json.JSONDecodeError:
-                    test_list = []
-            elif isinstance(patient.get("testname"), list):
-                test_list = patient["testname"]
-            testnames = ", ".join([test["testname"] for test in test_list]) if test_list else ""
-            no_of_tests = len(test_list)
-            # Parse payment method - FIX HERE
-            payment_data = {}
+            pid = patient.get("patient_id", "N/A")
+
+            # Payment method parsing
             paymentmethod = "N/A"
-            # First, ensure we're working with valid payment_method data
-            payment_method_raw = patient.get("payment_method", "")
-            # Handle empty string or None cases
-            if not payment_method_raw or payment_method_raw == "\"\"":
-                paymentmethod = "N/A"
-            else:
-                # If it's already a dict, use it directly
-                if isinstance(payment_method_raw, dict):
-                    payment_data = payment_method_raw
-                    paymentmethod = payment_data.get("paymentmethod", "N/A")
-                # If it's a string, try to parse it as JSON
-                elif isinstance(payment_method_raw, str):
+            raw = patient.get("payment_method", "")
+            if raw:
+                if isinstance(raw, dict):
+                    paymentmethod = raw.get("paymentmethod", "N/A")
+                elif isinstance(raw, str):
                     try:
-                        # Remove any extra quotes that might cause JSON parsing issues
-                        cleaned_payment_data = payment_method_raw.strip()
-                        if cleaned_payment_data.startswith('"') and cleaned_payment_data.endswith('"'):
-                            cleaned_payment_data = cleaned_payment_data[1:-1]
-                        # Try to parse as JSON
-                        if cleaned_payment_data and cleaned_payment_data != "\"\"":
-                            payment_data = json.loads(cleaned_payment_data)
-                            if isinstance(payment_data, dict):
-                                paymentmethod = payment_data.get("paymentmethod", "N/A")
-                            else:
-                                paymentmethod = str(payment_data)
-                        else:
-                            paymentmethod = "N/A"
-                    except json.JSONDecodeError:
-                        # If it can't be parsed as JSON, use the raw string
-                        paymentmethod = payment_method_raw
-            # Parse credit_details
-            credit_details = []
-            if "credit_details" in patient and patient["credit_details"]:
+                        cleaned = raw.strip('"')
+                        payment_data = json.loads(cleaned) if cleaned else {}
+                        paymentmethod = payment_data.get("paymentmethod", "N/A") if isinstance(payment_data, dict) else str(payment_data)
+                    except:
+                        paymentmethod = raw
+
+            # Partial payment
+            partial_payment_method = paymentmethod
+            if paymentmethod == "PartialPayment":
+                partial_data = patient.get("PartialPayment", "")
                 try:
-                    if isinstance(patient["credit_details"], str):
-                        credit_details = json.loads(patient["credit_details"])  # Convert JSON string to list
-                    elif isinstance(patient["credit_details"], list):
-                        credit_details = patient["credit_details"]
-                except json.JSONDecodeError:
-                    credit_details = []
-            # Ensure credit_amount and total_amount are integers
+                    if isinstance(partial_data, str):
+                        partial_data = json.loads(partial_data.strip('"')) if partial_data.strip('"') else {}
+                    if isinstance(partial_data, dict):
+                        partial_payment_method = partial_data.get("method", "PartialPayment")
+                except:
+                    partial_payment_method = "PartialPayment"
+
+            # Test list
+            test_list = []
+            test_field = patient.get("testname", [])
+            if isinstance(test_field, str):
+                try:
+                    test_list = json.loads(test_field)
+                except:
+                    test_list = []
+            elif isinstance(test_field, list):
+                test_list = test_field
+            testnames = ", ".join([test.get("testname", "") for test in test_list])
+            no_of_tests = len(test_list)
+
+            # Age
+            age = f"{patient.get('age', 'N/A')} {patient.get('age_type', '')}"
+            discount = int(patient.get('discount', 0) or 0)
+
+            # Amounts
             try:
                 total_amount = int(float(patient.get("totalAmount", 0) or 0))
-            except (ValueError, TypeError):
+            except:
                 total_amount = 0
             try:
                 credit_amount = int(float(patient.get("credit_amount", 0) or 0))
-            except (ValueError, TypeError):
+            except:
                 credit_amount = 0
-            # Parse partial payment method
-            partial_payment_method = "N/A"
-            if paymentmethod == "PartialPayment":
-                partial_payment_data = {}
-                partial_payment_raw = patient.get("PartialPayment", "")
-                if not partial_payment_raw or partial_payment_raw == "\"\"":
-                    partial_payment_method = "PartialPayment"
-                else:
-                    # If it's already a dict, use it directly
-                    if isinstance(partial_payment_raw, dict):
-                        partial_payment_data = partial_payment_raw
-                    # If it's a string, try to parse it as JSON
-                    elif isinstance(partial_payment_raw, str):
-                        try:
-                            # Remove any extra quotes that might cause JSON parsing issues
-                            cleaned_data = partial_payment_raw.strip()
-                            if cleaned_data.startswith('"') and cleaned_data.endswith('"'):
-                                cleaned_data = cleaned_data[1:-1]
-                            # Try to parse as JSON
-                            if cleaned_data and cleaned_data != "\"\"":
-                                partial_payment_data = json.loads(cleaned_data)
-                            else:
-                                partial_payment_data = {}
-                        except json.JSONDecodeError:
-                            partial_payment_data = {}
-                    if isinstance(partial_payment_data, dict):
-                        partial_payment_method = partial_payment_data.get("method", "PartialPayment")
-                    else:
-                        partial_payment_method = "PartialPayment"
-            else:
-                partial_payment_method = paymentmethod
-            # Format response data
+
+            credit_details = []
+            if isinstance(patient.get("credit_details"), str):
+                try:
+                    credit_details = json.loads(patient["credit_details"])
+                except:
+                    pass
+            elif isinstance(patient.get("credit_details"), list):
+                credit_details = patient["credit_details"]
+
+            # Status determination
+            barcode = None
+            status = "Registered"
+            sample_tests = sample_status_map.get(pid, [])
+            test_values = test_value_map.get(pid, {}).get("testdetails", [])
+            barcode = test_value_map.get(pid, {}).get("barcode")
+
+            all_collected = all(t.get("samplestatus") == "Sample Collected" for t in sample_tests) if sample_tests else False
+            partially_collected = any(t.get("samplestatus") == "Sample Collected" for t in sample_tests)
+            all_received = all(t.get("samplestatus") == "Received" for t in sample_tests) if sample_tests else False
+            partially_received = any(t.get("samplestatus") == "Received" for t in sample_tests)
+
+            if all_collected:
+                status = "Collected"
+            elif partially_collected:
+                status = "Partially Collected"
+            if all_received:
+                status = "Received"
+            elif partially_received:
+                status = "Partially Received"
+
+            if test_values:
+                all_tested = all(t.get("value") is not None for t in test_values)
+                partially_tested = any(t.get("value") is not None for t in test_values)
+                approve_all = all(t.get("approve") for t in test_values)
+                approve_partial = any(t.get("approve") for t in test_values)
+                dispatch_all = all(t.get("dispatch") for t in test_values)
+
+                if all_received or partially_received:
+                    if all_tested:
+                        status = "Tested"
+                    elif partially_tested:
+                        status = "Partially Tested"
+                if approve_all:
+                    status = "Approved"
+                elif approve_partial:
+                    status = "Partially Approved"
+                if dispatch_all:
+                    status = "Dispatched"
+
+            # Final patient object
             formatted_data.append({
                 "date": patient.get("date").strftime("%Y-%m-%d") if "date" in patient else "N/A",
-                "patient_id": patient.get("patient_id", "N/A"),
+                "patient_id": pid,
                 "patient_name": patient.get("patientname", "N/A"),
                 "gender": patient.get("gender", "N/A"),
                 "refby": patient.get("refby", "N/A"),
-                "age": age_combined,
+                "age": age,
                 "segment": patient.get("segment", "N/A"),
                 "b2b": patient.get("B2B", "N/A"),
                 "sample_collector": patient.get("sample_collector", "N/A"),
@@ -1583,14 +1621,20 @@ def overall_report(request):
                 "no_of_tests": no_of_tests,
                 "bill_no": patient.get("bill_no", "N/A"),
                 "registeredby": patient.get("registeredby", "N/A"),
-
+                "barcode": barcode,
+                "status": status,
             })
+
         return JsonResponse(formatted_data, safe=False)
-    return JsonResponse({"error": "Invalid request method. Only GET is allowed."}, status=405)
+    except Exception as e:
+        print("Critical Error:", str(e))
+        print(traceback.format_exc())
+        return JsonResponse({"error": str(e)}, status=500)
+
 
 @api_view(['GET'])
 @csrf_exempt
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def patient_test_sorting(request):
     try:
         patient_id = request.GET.get('patient_id')
@@ -1623,7 +1667,7 @@ def patient_test_sorting(request):
 
 
 @api_view(['POST'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def send_email(request):
     try:
         subject = request.data.get('subject', 'No Subject')
@@ -1657,7 +1701,7 @@ def send_email(request):
 
 # Define the timezone for India Standard Time (IST)
 IST = pytz.timezone('Asia/Kolkata')
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 class ConsolidatedDataView(APIView):
     def get(self, request):
         # Default to today's date if no date is provided
