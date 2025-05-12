@@ -1,13 +1,10 @@
 from rest_framework.response import Response
 from django.http import JsonResponse, HttpResponse
-from django.views.decorators.http import require_http_methods
 from rest_framework.decorators import api_view
 from rest_framework import  status
 from django.views.decorators.csrf import csrf_exempt
 from django.db.models import Max
-from django.forms.models import model_to_dict
 import json
-from urllib.parse import quote_plus
 from pymongo import MongoClient
 import certifi
 from gridfs import GridFS
@@ -26,7 +23,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.permissions import AllowAny
 from pyauth.auth import HasRoleAndDataPermission
-
+from ..auth.permissions import SkipPermissionsIfDisabled
 
 from dotenv import load_dotenv
 
@@ -35,19 +32,17 @@ load_dotenv()
 TIME_ZONE = 'Asia/Kolkata'
 IST = pytz.timezone(TIME_ZONE)
 # MongoDB Connection Setup
-@api_view(['GET'])
-@permission_classes([HasRoleAndDataPermission])
+# @api_view(['GET'])
+# @permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_mongodb_connection():
     # Properly escape the password
-    username = quote_plus("shinovalab")
-    password = quote_plus("Smrft@2024")
     # MongoDB connection with TLS certificate
-    client = MongoClient(os.getenv('DB_HOST'))
-    db = client.Lab  # Database name
+    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
+    db = client["Lab"]
     return db, GridFS(db)
 # View for handling referrer code generation
 @api_view(['GET'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_last_referrer_code(request):
     try:
         last_clinical = ClinicalName.objects.all().order_by('-referrerCode').first()
@@ -61,23 +56,28 @@ def get_last_referrer_code(request):
 
 @api_view(['POST', 'GET'])
 @csrf_exempt
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def clinical_name(request):
     if request.method == 'POST':
         mou_copy = request.FILES.get('mouCopy')
         data = request.data.copy()
+
         if not data.get('clinicalname'):
             return Response({"error": "Clinical name is required"}, status=status.HTTP_400_BAD_REQUEST)
+
         if mou_copy:
-            del data['mouCopy']
-        # Set initial approval status
+            data.pop('mouCopy', None)
+
         data['status'] = 'PENDING_APPROVAL'
         data['first_approved'] = False
         data['final_approved'] = False
+
         serializer = ClinicalNameSerializer(data=data)
+
         if serializer.is_valid():
             try:
                 clinical_name_instance = serializer.save()
+
                 if mou_copy:
                     db, fs = get_mongodb_connection()
                     file_content = mou_copy.read()
@@ -89,21 +89,26 @@ def clinical_name(request):
                     )
                     clinical_name_instance.mou_file_id = str(file_id)
                     clinical_name_instance.save()
+
                 return Response(serializer.data, status=status.HTTP_201_CREATED)
+
             except Exception as e:
                 return Response(
                     {'error': 'Clinical name creation failed', 'details': str(e)},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
+
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
     elif request.method == 'GET':
-        clinical_names = ClinicalName.objects.filter(status="APPROVED")  # Filter only approved entries
+        clinical_names = ClinicalName.objects.filter(status="APPROVED")
         serializer = ClinicalNameSerializer(clinical_names, many=True)
         return Response(serializer.data)
-    
+
+
     
 @api_view(['GET'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def download_mou_file(request, clinical_name_id):
     try:
         db, fs = get_mongodb_connection()
@@ -128,7 +133,7 @@ def download_mou_file(request, clinical_name_id):
 # Assume get_mongodb_connection is already imported
 
 @api_view(['GET'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def preview_mou_file(request, file_id):
     try:
         db, fs = get_mongodb_connection()
@@ -153,7 +158,7 @@ def preview_mou_file(request, file_id):
         )
 
 # ViewSet for managing clinical names with approval workflow
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 class ClinicalNameViewSet(viewsets.ModelViewSet):
     queryset = ClinicalName.objects.all()
     serializer_class = ClinicalNameSerializer
@@ -211,9 +216,8 @@ class ClinicalNameViewSet(viewsets.ModelViewSet):
         
 
 
-
 @api_view(['GET'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_clinicalname(request):
     if request.method == 'GET':
         clinicalname = ClinicalName.objects.all()

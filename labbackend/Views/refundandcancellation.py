@@ -17,6 +17,7 @@ from django.views.decorators.http import require_GET
 from django.views.decorators.http import require_http_methods
 import os
 #auth
+from ..auth.permissions import SkipPermissionsIfDisabled
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.permissions import AllowAny
@@ -27,7 +28,7 @@ load_dotenv()
 
 @api_view(['GET'])
 @csrf_exempt
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def search_refund(request):
     if request.method == "GET":
         patient_id = request.GET.get('patient_id')
@@ -74,7 +75,7 @@ otp_storage_refund = {}
 
 @api_view(['POST'])
 @csrf_exempt
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def generate_otp_refund(request):
     if request.method == "POST":
         try:
@@ -131,7 +132,7 @@ Shanmuga Diagnostics"""
 
 @api_view(['POST'])
 @csrf_exempt
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def verify_and_process_refund(request):
     if request.method == "POST":
         try:
@@ -155,7 +156,7 @@ def verify_and_process_refund(request):
 
             # Connect to MongoDB
             password = quote_plus('Smrft@2024')
-            client = MongoClient(os.getenv('DB_HOST'))
+            client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
             db = client.Lab
             patients_collection = db["labbackend_patient"]
 
@@ -200,7 +201,7 @@ def verify_and_process_refund(request):
 
 @api_view(['GET'])
 @csrf_exempt
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def search_cancellation(request):
     if request.method == "GET":
         patient_id = request.GET.get('patient_id')
@@ -258,7 +259,7 @@ otp_storage_cancellation = {}
 
 @api_view(['POST'])
 @csrf_exempt
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def generate_otp_cancellation(request):
     if request.method == "POST":
         try:
@@ -315,7 +316,7 @@ Shanmuga Diagnostics"""
 
 @api_view(['POST'])
 @csrf_exempt
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def verify_and_process_cancellation(request):
     if request.method == "POST":
         try:
@@ -338,7 +339,7 @@ def verify_and_process_cancellation(request):
 
             # Connect to MongoDB
             password = quote_plus('Smrft@2024')
-            client = MongoClient(os.getenv('DB_HOST'))
+            client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
             db = client.Lab
             patients_collection = db["labbackend_patient"]
 
@@ -417,12 +418,12 @@ def verify_and_process_cancellation(request):
 
 @api_view(['GET'])
 @csrf_exempt
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def logs_api(request):
     """Combined API endpoint for both refund and cancellation logs"""
     try:
         password = quote_plus('Smrft@2024')
-        client = MongoClient(os.getenv('DB_HOST'))
+        client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
         db = client.Lab
         patient_collection = db['labbackend_patient']
         
@@ -542,7 +543,7 @@ def logs_api(request):
 
 
 @api_view(['GET'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def dashboard_data(request):
     try:
         # Get date range and payment method from request parameters
@@ -562,11 +563,7 @@ def dashboard_data(request):
             to_date = datetime.strptime(to_date, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
         # MongoDB connection
         password = quote_plus('Smrft@2024')
-        client = MongoClient(
-            f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-            tls=True,
-            tlsCAFile=certifi.where()
-        )
+        client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
         db = client.Lab
         collection = db.labbackend_patient
         # Build the query for date filtering

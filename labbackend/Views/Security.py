@@ -10,6 +10,7 @@ import certifi
 from ..models import Register
 import os
 #auth
+from ..auth.permissions import SkipPermissionsIfDisabled
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.permissions import AllowAny
@@ -19,7 +20,7 @@ from dotenv import load_dotenv
 load_dotenv()
 @api_view(['GET', 'POST', 'PUT'])
 @csrf_exempt
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def registration(request):
     if request.method == 'POST':
         # Handle Registration
@@ -46,7 +47,7 @@ def registration(request):
 
         try:
             password = quote_plus('Smrft@2024')
-            client = MongoClient(os.getenv('DB_HOST'))
+            client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
             db = client.Lab
             collection = db['labbackend_register']
             
@@ -88,7 +89,7 @@ def registration(request):
 
 
 @api_view(['POST'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def login(request):
     name = request.data.get('name')
     password = request.data.get('password')

@@ -1,5 +1,5 @@
 from rest_framework.response import Response
-from django.http import JsonResponse
+from django.http import JsonResponse , HttpResponse
 from datetime import datetime
 from django.views.decorators.http import require_http_methods
 from rest_framework.decorators import api_view
@@ -29,6 +29,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.permissions import AllowAny
 from pyauth.auth import HasRoleAndDataPermission
+from .auth.permissions import SkipPermissionsIfDisabled
 #Models
 from .models import Patient
 from .models import SampleStatus
@@ -42,7 +43,6 @@ from .serializers import TestValueSerializer
 
 import os
 from dotenv import load_dotenv
-
 load_dotenv()
 
 
@@ -59,7 +59,7 @@ def convert_to_float(value):
         return 0.0
 
 @api_view(['GET'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def patient_report(request):
     start_date_str = request.GET.get('start_date')
     end_date_str = request.GET.get('end_date')
@@ -74,8 +74,12 @@ def patient_report(request):
         return JsonResponse({"error": "Invalid date format. Use YYYY-MM-DD."}, status=400)
     
     # MongoDB Connection Setup
-    password = quote_plus('Smrft@2024')
-    client = MongoClient(os.getenv('DB_HOST'))
+    #password = quote_plus('Smrft@2024')
+    client = MongoClient(
+        'mongodb://admin:ifS2nTs6vm@103.205.141.208:27017/Lab?authSource=admin',
+        tls=True,
+        tlsAllowInvalidCertificates=True  # <-- bypass certificate verification
+    )
     db = client.Lab
     patients_collection = db["labbackend_patient"]  # MongoDB collection
     
@@ -238,19 +242,22 @@ def patient_report(request):
 
 @api_view(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])
 @csrf_exempt  # Allow GET, POST, and PATCH requests without CSRF protection
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_test_details(request):
     try:
         # Securely encode password
-        password = quote_plus('Smrft@2024')
         # MongoDB connection with TLS certificate
-        client = MongoClient(os.getenv('DB_HOST'))
+        client = MongoClient(
+            'mongodb://admin:ifS2nTs6vm@103.205.141.208:27017/Lab?authSource=admin',
+            tls=True,
+            tlsAllowInvalidCertificates=True  # <-- bypass certificate verification
+        )
         db = client.Lab  # Database name
         collection = db.labbackend_testdetails  # Collection name
         if request.method == 'GET':
-            # Retrieve all documents in Testdetails collection
-            test_details = list(collection.find({}, {'_id': 0}))  # Exclude MongoDB's default _id field
-            return JsonResponse(test_details, safe=False, status=200)
+            # Retrieve only documents with status "Approved"
+            approved_tests = list(collection.find({"status": "Approved"}, {'_id': 0}))
+            return JsonResponse(approved_tests, safe=False, status=200)
         elif request.method == 'POST':
             try:
                 data = json.loads(request.body.decode('utf-8'))
@@ -289,16 +296,326 @@ def get_test_details(request):
     except Exception as e:
         print("Error:", e)
         return JsonResponse({'error': 'An error occurred'}, status=500)
+    
+
+@csrf_exempt
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
+def send_approval_email(request):
+    if request.method == 'POST':
+        try:
+            print("Received approval email request")
+            # Parse JSON request data
+            try:
+                data = json.loads(request.body.decode('utf-8'))
+                test_name = data.get('test_name')
+                recipient_email = data.get('recipient_email')
+                print(f"Test name from request: {test_name}")
+                print(f"Recipient email from request: {recipient_email}")
+                if not test_name:
+                    print("Error: Test name is missing")
+                    return JsonResponse({'error': 'Test name is required'}, status=400)
+            except json.JSONDecodeError as e:
+                print(f"JSON decode error: {e}")
+                return JsonResponse({'error': 'Invalid JSON'}, status=400)
+            # Connect to MongoDB to verify the test exists
+            try:
+                password = quote_plus('Smrft@2024')
+                client = MongoClient(
+                    'mongodb://admin:ifS2nTs6vm@103.205.141.208:27017/Lab?authSource=admin',
+                    tls=True,
+                    tlsAllowInvalidCertificates=True  # <-- bypass certificate verification
+                )
+                db = client.Lab
+                collection = db.labbackend_testdetails
+                # Check if test exists and get all test details
+                test = collection.find_one({'test_name': test_name})
+                if not test:
+                    print(f"Test not found: {test_name}")
+                    return JsonResponse({'error': 'Test not found'}, status=404)
+                # Convert ObjectId to string for JSON serialization if needed
+                if '_id' in test:
+                    test['_id'] = str(test['_id'])
+                print(f"Test found: {test_name}")
+            except Exception as mongo_err:
+                print(f"MongoDB connection error: {mongo_err}")
+                return JsonResponse({'error': f'Database error: {str(mongo_err)}'}, status=500)
+            # Generate approval URL
+            base_url = request.build_absolute_uri('/').rstrip('/')
+            approval_url = f"{base_url}/approve_test/?test_name={test_name}"
+            print(f"Generated approval URL: {approval_url}")
+            # For local development, override the URL if needed
+            if '127.0.0.1' in base_url or 'localhost' in base_url:
+                base_url = 'http://127.0.0.1:8000'
+            else:
+                base_url = 'https://lab.shinovadatabase.in'
+
+            approval_url = f"{base_url}/approve_test/?test_name={test_name}"
+
+            # Format test details for email
+            test_details_str = ""
+            for key, value in test.items():
+                if key != '_id' and key != 'parameters':
+                    test_details_str += f"{key.replace('_', ' ').title()}: {value}\n"
+            # Handle parameters separately if they exist and are in JSON format
+            if 'parameters' in test:
+                try:
+                    parameters = json.loads(test['parameters']) if isinstance(test['parameters'], str) else test['parameters']
+                    if parameters:
+                        test_details_str += "\nParameters:\n"
+                        for i, param in enumerate(parameters, 1):
+                            test_details_str += f"  Parameter {i}:\n"
+                            for param_key, param_value in param.items():
+                                test_details_str += f"    {param_key.replace('_', ' ').title()}: {param_value}\n"
+                except (json.JSONDecodeError, TypeError):
+                    test_details_str += f"\nParameters: {test.get('parameters', 'Not available')}\n"
+            # Compose email with HTML for better formatting and button
+            subject = f'Approval Request: Test {test_name}'
+            # HTML email template with direct approval button - improved for spam prevention
+            html_message = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Test Approval Request</title>
+                <style>
+                    body {{ font-family: Arial, sans-serif; margin: 20px; color: #333333; }}
+                    .container {{ max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }}
+                    .header {{ background-color: #F5F5F5; padding: 10px; border-radius: 5px; margin-bottom: 20px; }}
+                    .test-details {{ white-space: pre-line; margin-bottom: 20px; }}
+                    .button {{ display: inline-block; padding: 10px 20px; background-color: #4CAF50; color: white;
+                               text-decoration: none; border-radius: 5px; font-weight: bold; }}
+                    .footer {{ font-size: 12px; color: #666; margin-top: 30px; border-top: 1px solid #ddd; padding-top: 10px; }}
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="header">
+                        <h2>Lab Test Approval Request</h2>
+                    </div>
+                    <p>Hello,</p>
+                    <p>A new lab test has been submitted and requires your approval. Here are the details:</p>
+                    <div class="test-details">
+                        {test_details_str}
+                    </div>
+                    <p>To approve this test, please click the button below:</p>
+                    <p><a href="{approval_url}" class="button">Approve Test</a></p>
+                    <div class="footer">
+                        <p>This is an automated message from Shanmuga Diagnostics Laboratory System. If you did not request this approval, please ignore this email.</p>
+                        <p>© 2025 Shanmuga Diagnostics. All rights reserved.</p>
+                    </div>
+                </div>
+            </body>
+            </html>
+            """
+            # Plain text version for email clients that don't support HTML
+            plain_message = f"""
+            Lab Test Approval Request
+            Hello,
+            A new lab test has been submitted and requires your approval. Here are the details:
+            {test_details_str}
+            To approve this test, please click on the following link:
+            {approval_url}
+            This is an automated message from Shanmuga Diagnostics System. If you did not request this approval, please ignore this email.
+            © 2025 Shanmuga Diagnostics. All rights reserved.
+            """
+            # Create the recipient list
+            # Use provided email if available, otherwise use default
+            recipient_list = []
+            if recipient_email:
+                recipient_list.append(recipient_email)
+
+            # Always include default emails
+            default_emails = ['drprabusankar@smrft.org', 'drpriya@smrft.org']
+            for email in default_emails:
+                if email not in recipient_list:
+                    recipient_list.append(email)
+
+            # Send email using smtplib directly for more control
+            try:
+                print(f"Sending email to: {recipient_list}")
+                import smtplib
+                from email.mime.multipart import MIMEMultipart
+                from email.mime.text import MIMEText
+                from email.utils import formatdate, make_msgid
+                # Set up the SMTP server
+                smtp_server = "smtp.gmail.com"
+                smtp_port = 587
+                smtp_username = settings.EMAIL_HOST_USER
+                smtp_password = settings.EMAIL_HOST_PASSWORD  # Make sure this is an app password if using Gmail
+                # Create message container
+                msg = MIMEMultipart('alternative')
+                msg['Subject'] = subject
+                msg['From'] = f"Shanmuga Diagnostics<{smtp_username}>"
+                msg['To'] = ", ".join(recipient_list)
+                msg['Date'] = formatdate(localtime=True)
+                msg['Message-ID'] = make_msgid(domain='shinovadatabase.in')
+                # Add custom headers to reduce chance of being marked as spam
+                msg.add_header('X-Priority', '1')  # 1 = High priority
+                msg.add_header('X-MSMail-Priority', 'High')
+                msg.add_header('Importance', 'High')
+                msg.add_header('X-Mailer', 'Shanmuga Diagnostics Approval System')
+                # Record-Route might help with deliverability
+                msg.add_header('Return-Path', smtp_username)
+                # Attach parts
+                part1 = MIMEText(plain_message, 'plain')
+                part2 = MIMEText(html_message, 'html')
+                msg.attach(part1)
+                msg.attach(part2)
+                # Create SMTP session
+                server = smtplib.SMTP(smtp_server, smtp_port)
+                server.ehlo()
+                server.starttls()
+                server.ehlo()
+                server.login(smtp_username, smtp_password)
+                # Send email
+                server.sendmail(smtp_username, recipient_list, msg.as_string())
+                server.quit()
+                print("Email sent successfully using direct SMTP")
+                return JsonResponse({'message': 'Approval email sent successfully'}, status=200)
+            except Exception as email_err:
+                print(f"Email sending error: {email_err}")
+                return JsonResponse({'error': f'Email sending failed: {str(email_err)}'}, status=500)
+        except Exception as e:
+            print(f"General error sending approval email: {e}")
+            return JsonResponse({'error': str(e)}, status=500)
+    print("Invalid request method for send_approval_email")
+    return JsonResponse({'error': 'Invalid request method'}, status=405)
+
+
+# For handling test approval
+@csrf_exempt
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
+def approve_test(request):
+    if request.method == 'PATCH':
+        try:
+            data = json.loads(request.body.decode('utf-8'))
+            test_name = data.get('test_name')
+           
+            if not test_name:
+                return JsonResponse({'error': 'Test name is required'}, status=400)
+           
+            # Connect to MongoDB
+            password = quote_plus('Smrft@2024')
+            client = MongoClient(
+                'mongodb://admin:ifS2nTs6vm@103.205.141.208:27017/Lab?authSource=admin',
+                tls=True,
+                tlsAllowInvalidCertificates=True  # <-- bypass certificate verification
+            )
+            db = client.Lab
+            collection = db.labbackend_testdetails
+           
+            # Update test status to "Approved"
+            result = collection.update_one(
+                {'test_name': test_name},
+                {'$set': {'status': 'Approved'}}
+            )
+           
+            if result.modified_count > 0:
+                return JsonResponse({'message': 'Test approved successfully'}, status=200)
+            else:
+                return JsonResponse({'error': 'Test not found or already approved'}, status=404)
+               
+        except Exception as e:
+            print(f"Error approving test: {e}")
+            return JsonResponse({'error': str(e)}, status=500)
+   
+    # For GET requests with test_name as query parameter (from email link)
+    elif request.method == 'GET':
+        try:
+            # Get test_name from query parameters
+            test_name = request.GET.get('test_name')
+           
+            if not test_name:
+                return JsonResponse({'error': 'Test name is required'}, status=400)
+           
+            # Connect to MongoDB
+            password = quote_plus('Smrft@2024')
+            client = MongoClient(
+                'mongodb://admin:ifS2nTs6vm@103.205.141.208:27017/Lab?authSource=admin',
+                tls=True,
+                tlsAllowInvalidCertificates=True  # <-- bypass certificate verification
+            )
+            db = client.Lab
+            collection = db.labbackend_testdetails
+           
+            # Find and update the test with matching name
+            result = collection.update_one(
+                {'test_name': test_name},
+                {'$set': {'status': 'Approved'}}
+            )
+           
+            if result.modified_count > 0:
+                # Return a simple HTML response confirming approval
+                html_response = """
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Test Approval Confirmation</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; margin: 40px; text-align: center; background-color: #f5f5f5; }
+                        .container { max-width: 600px; margin: 0 auto; padding: 30px; background-color: white;
+                                    border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+                        .success { color: #4caf50; font-size: 28px; margin-bottom: 20px; }
+                        .icon { font-size: 50px; color: #4caf50; margin-bottom: 20px; }
+                        .button { display: inline-block; padding: 10px 20px; background-color: #4CAF50; color: white;
+                                text-decoration: none; border-radius: 5px; font-weight: bold; margin-top: 20px; }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="icon">✓</div>
+                        <div class="success">Test Approved Successfully</div>
+                        <p>The test has been approved and is now active in the system.</p>
+                        <p>Test Name: <strong>""" + test_name + """</strong></p>
+                        <p>Status: <strong>Approved</strong></p>
+                        <p>You can close this window.</p>
+                    </div>
+                </body>
+                </html>
+                """
+                return HttpResponse(html_response, content_type='text/html')
+            else:
+                html_error = """
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Test Approval Error</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; margin: 40px; text-align: center; background-color: #f5f5f5; }
+                        .container { max-width: 600px; margin: 0 auto; padding: 30px; background-color: white;
+                                    border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+                        .error { color: #f44336; font-size: 28px; margin-bottom: 20px; }
+                        .icon { font-size: 50px; color: #f44336; margin-bottom: 20px; }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="icon">✗</div>
+                        <div class="error">Approval Failed</div>
+                        <p>The test was not found or has already been approved.</p>
+                        <p>Test Name: <strong>""" + test_name + """</strong></p>
+                        <p>Please contact the administrator for assistance.</p>
+                    </div>
+                </body>
+                </html>
+                """
+                return HttpResponse(html_error, content_type='text/html', status=404)
+        except Exception as e:
+            print(f"Error processing approval: {e}")
+            return JsonResponse({'error': str(e)}, status=500)
+   
+    return JsonResponse({'error': 'Invalid request method'}, status=405)
 
 @api_view(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])
 @csrf_exempt
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def handle_patch_request(request):
     try:
         # MongoDB connection setup inside the function
         password = quote_plus('Smrft@2024')
         # MongoDB connection with TLS certificate
-        client = MongoClient(os.getenv('DB_HOST'))
+        client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
         db = client.Lab  # Database name
         collection = db.labbackend_testdetails  # Collection name
         data = json.loads(request.body.decode('utf-8'))
@@ -322,13 +639,18 @@ def handle_patch_request(request):
 
 @api_view(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])
 @csrf_exempt
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_test_parameters(request, test_name):
     try:
         # MongoDB connection setup
-        password = quote_plus('Smrft@2024')
+        #password = quote_plus('Smrft@2024')
 
         # MongoDB connection with TLS certificate
-        client = MongoClient(os.getenv('DB_HOST'))
+        client = MongoClient(
+            'mongodb://admin:ifS2nTs6vm@103.205.141.208:27017/Lab?authSource=admin',
+            tls=True,
+            tlsAllowInvalidCertificates=True  # <-- bypass certificate verification
+        )
 
         db = client.Lab  # Database name
         collection = db.labbackend_testdetails
@@ -341,6 +663,7 @@ def get_test_parameters(request, test_name):
     except Exception as e:
         print("Error fetching parameters:", e)
         return JsonResponse({"error": "Failed to fetch parameters"}, status=500)
+
     
 
 
@@ -348,9 +671,13 @@ def get_test_parameters(request, test_name):
 @permission_classes([HasRoleAndDataPermission])
 def compare_test_details(request):
     # MongoDB connection setup
-    password = quote_plus('Smrft@2024')
+    #password = quote_plus('Smrft@2024')
         # MongoDB connection with TLS certificate
-    client = MongoClient(os.getenv('DB_HOST'))
+    client = MongoClient(
+            'mongodb://admin:ifS2nTs6vm@103.205.141.208:27017/Lab?authSource=admin',
+            tls=True,
+            tlsAllowInvalidCertificates=True  # <-- bypass certificate verification
+        )
     db = client.Lab  # Database name
     collection = db.labbackend_testdetails  # Collection name
     # Retrieve the date and patient ID from the request
@@ -420,7 +747,7 @@ def compare_test_details(request):
     return JsonResponse({'data': test_data})
 
 @api_view(['GET'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_samplestatus_testvalue(request):
     try:
         # Get the date from the query parameter
@@ -462,7 +789,7 @@ def get_samplestatus_testvalue(request):
 
 
 @api_view(['GET', 'POST','PATCH'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def save_test_value(request):
     if request.method == 'GET':
         patient_id = request.GET.get('patient_id')
@@ -490,6 +817,7 @@ def save_test_value(request):
             patient = Patient.objects.get(patient_id=payload['patient_id'])
             test_details_json = payload.get("testdetails", [])
             barcode=payload.get("barcode")
+            verified_by = payload.get('verified_by')
             if not isinstance(test_details_json, list) or not test_details_json:
                 return Response({"error": "Invalid test details format"}, status=status.HTTP_400_BAD_REQUEST)
             test_value_record, created = TestValue.objects.get_or_create(
@@ -500,6 +828,7 @@ def save_test_value(request):
                     'age': patient.age,
                     "barcode": barcode,
                     'testdetails': test_details_json,
+                    'verified_by': verified_by,
                 }
             )
             existing_test_details = test_value_record.testdetails if not created else []
@@ -533,10 +862,8 @@ def save_test_value(request):
             print("Error in POST method:", str(e))  # Debugging
             return Response({"error": "An error occurred"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     elif request.method == 'PATCH':
-            # MongoDB connection
-        password = quote_plus('Smrft@2024')
         # MongoDB connection with TLS certificate
-        client = MongoClient(os.getenv('DB_HOST'))
+        client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
         db = client.Lab  # Database name
         collection = db.labbackend_testvalue
         # Extract parameters from the request
@@ -596,12 +923,12 @@ def save_test_value(request):
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
 @api_view(['PATCH'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def update_test_value(request):
     # MongoDB connection
-    password = quote_plus('Smrft@2024')
+    #password = quote_plus('Smrft@2024')
     # MongoDB connection with TLS certificate
-    client = MongoClient(os.getenv('DB_HOST'))
+    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
     db = client.Lab  # Database name
     collection = db.labbackend_testvalue
     try:
@@ -656,13 +983,13 @@ TIME_ZONE = 'Asia/Kolkata'
 IST = pytz.timezone(TIME_ZONE)
 
 @api_view(['PATCH'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def update_dispatch_status(request, patient_id):
     # MongoDB connection
     password = quote_plus('Smrft@2024')
 
     # MongoDB connection with TLS certificate
-    client = MongoClient(os.getenv('DB_HOST'))
+    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
 
     db = client.Lab  # Database name
     collection = db.labbackend_testvalue
@@ -702,7 +1029,7 @@ def update_dispatch_status(request, patient_id):
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_test_report(request):
     day = request.GET.get('day')
     month = request.GET.get('month')
@@ -728,7 +1055,7 @@ def get_test_report(request):
 
 
 @api_view(['GET'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_test_values(request):
     # Get date from request parameters
     date = request.GET.get('date')
@@ -771,9 +1098,8 @@ def get_test_values(request):
         ]
         return JsonResponse(data, safe=False)
 
-
 @api_view(['GET'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def test_values(request):
     # Get the date parameter from the request
     date_str = request.GET.get('date')
@@ -792,12 +1118,12 @@ def test_values(request):
 
 @api_view(["PATCH"])
 @csrf_exempt
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def approve_test_detail(request, patient_id, test_index):
     # MongoDB connection
     password = quote_plus('Smrft@2024')
     # MongoDB connection with TLS certificate
-    client = MongoClient(os.getenv('DB_HOST'))
+    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
     db = client.Lab  # Database name
     collection = db.labbackend_testvalue  # Your collection name
     # Log the incoming request body
@@ -846,12 +1172,12 @@ def approve_test_detail(request, patient_id, test_index):
     
 @api_view(['PATCH'])
 @csrf_exempt
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def rerun_test_detail(request, patient_id, test_index):
     # MongoDB connection
     password = quote_plus('Smrft@2024')
         # MongoDB connection with TLS certificate
-    client = MongoClient(os.getenv('DB_HOST'))
+    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
     db = client.Lab  # Database name
     collection = db.labbackend_testvalue  # Your collection name
     """Rerun the test detail at the given index for the specified patient."""
@@ -893,13 +1219,13 @@ def rerun_test_detail(request, patient_id, test_index):
 
 @csrf_exempt
 @api_view(['PATCH'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def update_test_detail(request, patient_id):
     # MongoDB connection
     password = quote_plus('Smrft@2024')
 
         # MongoDB connection with TLS certificate
-    client = MongoClient(os.getenv('DB_HOST'))
+    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
 
     db = client.Lab  # Database name
     collection = db.labbackend_testvalue  # Your collection name
@@ -943,23 +1269,18 @@ def update_test_detail(request, patient_id):
 
 
 @api_view(['GET'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_patient_test_details(request):
     patient_id = request.GET.get('patient_id')
     if not patient_id:
         return JsonResponse({'error': 'Patient ID is required'}, status=400)
-
     try:
-        # Fetch TestValue, SampleStatus, and BarcodeTestDetails based on patient_id
         test_values = TestValue.objects.filter(patient_id=patient_id)
         sample_status = SampleStatus.objects.filter(patient_id=patient_id)
         barcode_details = BarcodeTestDetails.objects.filter(patient_id=patient_id).first()
-
-        # If no test values are found
+        patient = Patient.objects.filter(patient_id=patient_id).first()
         if not test_values:
             return JsonResponse({'error': 'Test values not found for the given patient ID'}, status=404)
-
-        # Parse barcodes from BarcodeTestDetails
         barcodes = []
         if barcode_details:
             try:
@@ -967,42 +1288,35 @@ def get_patient_test_details(request):
                 barcodes = [test.get("barcode") for test in tests if test.get("barcode")]
             except json.JSONDecodeError:
                 barcodes = []
-
-        # Prepare patient details
         patient_details = {
             "patient_id": test_values[0].patient_id,
             "patientname": test_values[0].patientname,
             "age": test_values[0].age,
             "date": test_values[0].date,
             "barcodes": barcodes,
-            "testdetails": []
+            "testdetails": [],
+            "gender": patient.gender if patient else "N/A",
+            "refby": patient.refby if patient else "N/A",
+            "B2B": patient.B2B,
+            "verified_by": test_values[0].verified_by,
         }
-
-        # Extract test details from TestValue and SampleStatus
         for test in test_values[0].testdetails:
             testname = test.get("testname")
             department = test.get("department", "N/A")
             parameters = test.get("parameters", [])
-
-            # Fetch corresponding SampleStatus for this testname
             status = next(
                 (status for status in sample_status[0].testdetails if status.get("testname") == testname), None)
             samplecollected_time = status.get("samplecollected_time") if status else None
             received_time = status.get("received_time") if status else None
-
-            # Construct test detail dictionary
             test_detail = {
                 "department": department,
                 "testname": testname,
                 "samplecollected_time": samplecollected_time,
                 "received_time": received_time
             }
-
-            # If parameters exist, only include testname and parameters
             if parameters:
                 test_detail["parameters"] = parameters
             else:
-                # Include these fields only if there are no parameters
                 test_detail.update({
                     "method": test.get("method", "N/A"),
                     "specimen_type": test.get("specimen_type", "N/A"),
@@ -1010,16 +1324,13 @@ def get_patient_test_details(request):
                     "unit": test.get("unit", "N/A"),
                     "reference_range": test.get("reference_range", "N/A")
                 })
-
             patient_details["testdetails"].append(test_detail)
-
         return JsonResponse(patient_details, safe=False)
-
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
   
 @api_view(['GET'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def patient_test_status(request):
     try:
         patient_ids = request.GET.getlist('patient_id')  # Accept multiple patient IDs
@@ -1111,25 +1422,30 @@ def patient_test_status(request):
         print(traceback.format_exc())
         return JsonResponse({'error': str(e)}, status=500)
 
+
+
+from django.http import JsonResponse
+from pymongo import MongoClient
+from datetime import datetime, timedelta
+import os, json, traceback
+from django.utils.timezone import make_aware
+from .models import SampleStatus, TestValue
+
 @api_view(['GET','PATCH'])
 @csrf_exempt
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def overall_report(request):
-    # MongoDB Connection Setup
-    password = quote_plus('Smrft@2024')
-    client = MongoClient(
-        f'mongodb+srv://shinovalab:{password}@cluster0.xbq9c.mongodb.net/Lab?retryWrites=true&w=majority',
-        tls=True,
-        tlsCAFile=certifi.where()
-    )
-    db = client.Lab
-    patients_collection = db["labbackend_patient"]  # MongoDB collection
-    if request.method == "GET":
-        # Get query parameters
-        patient_id = request.GET.get("patient_id", None)
-        from_date = request.GET.get("from_date", None)
-        to_date = request.GET.get("to_date", None)
-        # Parse date filters
+    try:
+        # MongoDB setup
+        client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
+        db = client.Lab
+        patients_collection = db["labbackend_patient"]
+
+        # Date filters
+        from_date = request.GET.get("from_date")
+        to_date = request.GET.get("to_date")
+        patient_id = request.GET.get("patient_id")
+
         try:
             if from_date:
                 from_date = datetime.strptime(from_date, "%Y-%m-%d")
@@ -1137,121 +1453,162 @@ def overall_report(request):
                 to_date = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
         except ValueError:
             return JsonResponse({"error": "Invalid date format. Use YYYY-MM-DD."}, status=400)
-        # Fetch patient data from MongoDB
+
+        # Build MongoDB query
         query = {}
         if patient_id:
             query["patient_id"] = patient_id
         if from_date and to_date:
             query["date"] = {"$gte": from_date, "$lt": to_date}
+
         patients = list(patients_collection.find(query))
         if not patients:
-            return JsonResponse([], safe=False)  # Return empty list if no data found
+            return JsonResponse([], safe=False)
+
+        patient_ids = [p.get("patient_id") for p in patients if p.get("patient_id")]
+
+        # Status data: bulk fetch from SQL DBs
+        from_datetime = make_aware(from_date or datetime.now())
+        to_datetime = make_aware((to_date - timedelta(days=1)) if to_date else datetime.now().replace(hour=23, minute=59, second=59))
+
+        sample_status_records = SampleStatus.objects.filter(
+            patient_id__in=patient_ids,
+            date__range=(from_datetime, to_datetime)
+        ).values("patient_id", "testdetails")
+
+        test_value_records = TestValue.objects.filter(
+            patient_id__in=patient_ids,
+            date__range=(from_datetime, to_datetime)
+        ).values("patient_id", "barcode", "testdetails")
+
+        # Organize status data
+        sample_status_map = {}
+        for record in sample_status_records:
+            sample_status_map.setdefault(record["patient_id"], []).extend(record["testdetails"])
+
+        test_value_map = {}
+        for record in test_value_records:
+            pid = record["patient_id"]
+            test_value_map.setdefault(pid, {"barcode": record["barcode"], "testdetails": []})
+            test_value_map[pid]["testdetails"].extend(record["testdetails"])
+
+        # Final result
         formatted_data = []
+
         for patient in patients:
-            # Extract values safely
-            age_combined = f"{patient.get('age', 'N/A')} {patient.get('age_type', '')}"
-            discount = int(patient.get('discount', 0) or 0)
-            # Parse test names
-            test_list = []
-            if isinstance(patient.get("testname"), str) and patient["testname"].strip():
-                try:
-                    test_list = json.loads(patient["testname"])
-                except json.JSONDecodeError:
-                    test_list = []
-            elif isinstance(patient.get("testname"), list):
-                test_list = patient["testname"]
-            testnames = ", ".join([test["testname"] for test in test_list]) if test_list else ""
-            no_of_tests = len(test_list)
-            # Parse payment method - FIX HERE
-            payment_data = {}
+            pid = patient.get("patient_id", "N/A")
+
+            # Payment method parsing
             paymentmethod = "N/A"
-            # First, ensure we're working with valid payment_method data
-            payment_method_raw = patient.get("payment_method", "")
-            # Handle empty string or None cases
-            if not payment_method_raw or payment_method_raw == "\"\"":
-                paymentmethod = "N/A"
-            else:
-                # If it's already a dict, use it directly
-                if isinstance(payment_method_raw, dict):
-                    payment_data = payment_method_raw
-                    paymentmethod = payment_data.get("paymentmethod", "N/A")
-                # If it's a string, try to parse it as JSON
-                elif isinstance(payment_method_raw, str):
+            raw = patient.get("payment_method", "")
+            if raw:
+                if isinstance(raw, dict):
+                    paymentmethod = raw.get("paymentmethod", "N/A")
+                elif isinstance(raw, str):
                     try:
-                        # Remove any extra quotes that might cause JSON parsing issues
-                        cleaned_payment_data = payment_method_raw.strip()
-                        if cleaned_payment_data.startswith('"') and cleaned_payment_data.endswith('"'):
-                            cleaned_payment_data = cleaned_payment_data[1:-1]
-                        # Try to parse as JSON
-                        if cleaned_payment_data and cleaned_payment_data != "\"\"":
-                            payment_data = json.loads(cleaned_payment_data)
-                            if isinstance(payment_data, dict):
-                                paymentmethod = payment_data.get("paymentmethod", "N/A")
-                            else:
-                                paymentmethod = str(payment_data)
-                        else:
-                            paymentmethod = "N/A"
-                    except json.JSONDecodeError:
-                        # If it can't be parsed as JSON, use the raw string
-                        paymentmethod = payment_method_raw
-            # Parse credit_details
-            credit_details = []
-            if "credit_details" in patient and patient["credit_details"]:
+                        cleaned = raw.strip('"')
+                        payment_data = json.loads(cleaned) if cleaned else {}
+                        paymentmethod = payment_data.get("paymentmethod", "N/A") if isinstance(payment_data, dict) else str(payment_data)
+                    except:
+                        paymentmethod = raw
+
+            # Partial payment
+            partial_payment_method = paymentmethod
+            if paymentmethod == "PartialPayment":
+                partial_data = patient.get("PartialPayment", "")
                 try:
-                    if isinstance(patient["credit_details"], str):
-                        credit_details = json.loads(patient["credit_details"])  # Convert JSON string to list
-                    elif isinstance(patient["credit_details"], list):
-                        credit_details = patient["credit_details"]
-                except json.JSONDecodeError:
-                    credit_details = []
-            # Ensure credit_amount and total_amount are integers
+                    if isinstance(partial_data, str):
+                        partial_data = json.loads(partial_data.strip('"')) if partial_data.strip('"') else {}
+                    if isinstance(partial_data, dict):
+                        partial_payment_method = partial_data.get("method", "PartialPayment")
+                except:
+                    partial_payment_method = "PartialPayment"
+
+            # Test list
+            test_list = []
+            test_field = patient.get("testname", [])
+            if isinstance(test_field, str):
+                try:
+                    test_list = json.loads(test_field)
+                except:
+                    test_list = []
+            elif isinstance(test_field, list):
+                test_list = test_field
+            testnames = ", ".join([test.get("testname", "") for test in test_list])
+            no_of_tests = len(test_list)
+
+            # Age
+            age = f"{patient.get('age', 'N/A')} {patient.get('age_type', '')}"
+            discount = int(patient.get('discount', 0) or 0)
+
+            # Amounts
             try:
                 total_amount = int(float(patient.get("totalAmount", 0) or 0))
-            except (ValueError, TypeError):
+            except:
                 total_amount = 0
             try:
                 credit_amount = int(float(patient.get("credit_amount", 0) or 0))
-            except (ValueError, TypeError):
+            except:
                 credit_amount = 0
-            # Parse partial payment method
-            partial_payment_method = "N/A"
-            if paymentmethod == "PartialPayment":
-                partial_payment_data = {}
-                partial_payment_raw = patient.get("PartialPayment", "")
-                if not partial_payment_raw or partial_payment_raw == "\"\"":
-                    partial_payment_method = "PartialPayment"
-                else:
-                    # If it's already a dict, use it directly
-                    if isinstance(partial_payment_raw, dict):
-                        partial_payment_data = partial_payment_raw
-                    # If it's a string, try to parse it as JSON
-                    elif isinstance(partial_payment_raw, str):
-                        try:
-                            # Remove any extra quotes that might cause JSON parsing issues
-                            cleaned_data = partial_payment_raw.strip()
-                            if cleaned_data.startswith('"') and cleaned_data.endswith('"'):
-                                cleaned_data = cleaned_data[1:-1]
-                            # Try to parse as JSON
-                            if cleaned_data and cleaned_data != "\"\"":
-                                partial_payment_data = json.loads(cleaned_data)
-                            else:
-                                partial_payment_data = {}
-                        except json.JSONDecodeError:
-                            partial_payment_data = {}
-                    if isinstance(partial_payment_data, dict):
-                        partial_payment_method = partial_payment_data.get("method", "PartialPayment")
-                    else:
-                        partial_payment_method = "PartialPayment"
-            else:
-                partial_payment_method = paymentmethod
-            # Format response data
+
+            credit_details = []
+            if isinstance(patient.get("credit_details"), str):
+                try:
+                    credit_details = json.loads(patient["credit_details"])
+                except:
+                    pass
+            elif isinstance(patient.get("credit_details"), list):
+                credit_details = patient["credit_details"]
+
+            # Status determination
+            barcode = None
+            status = "Registered"
+            sample_tests = sample_status_map.get(pid, [])
+            test_values = test_value_map.get(pid, {}).get("testdetails", [])
+            barcode = test_value_map.get(pid, {}).get("barcode")
+
+            all_collected = all(t.get("samplestatus") == "Sample Collected" for t in sample_tests) if sample_tests else False
+            partially_collected = any(t.get("samplestatus") == "Sample Collected" for t in sample_tests)
+            all_received = all(t.get("samplestatus") == "Received" for t in sample_tests) if sample_tests else False
+            partially_received = any(t.get("samplestatus") == "Received" for t in sample_tests)
+
+            if all_collected:
+                status = "Collected"
+            elif partially_collected:
+                status = "Partially Collected"
+            if all_received:
+                status = "Received"
+            elif partially_received:
+                status = "Partially Received"
+
+            if test_values:
+                all_tested = all(t.get("value") is not None for t in test_values)
+                partially_tested = any(t.get("value") is not None for t in test_values)
+                approve_all = all(t.get("approve") for t in test_values)
+                approve_partial = any(t.get("approve") for t in test_values)
+                dispatch_all = all(t.get("dispatch") for t in test_values)
+
+                if all_received or partially_received:
+                    if all_tested:
+                        status = "Tested"
+                    elif partially_tested:
+                        status = "Partially Tested"
+                if approve_all:
+                    status = "Approved"
+                elif approve_partial:
+                    status = "Partially Approved"
+                if dispatch_all:
+                    status = "Dispatched"
+
+            # Final patient object
             formatted_data.append({
                 "date": patient.get("date").strftime("%Y-%m-%d") if "date" in patient else "N/A",
-                "patient_id": patient.get("patient_id", "N/A"),
+                "patient_id": pid,
                 "patient_name": patient.get("patientname", "N/A"),
                 "gender": patient.get("gender", "N/A"),
                 "refby": patient.get("refby", "N/A"),
-                "age": age_combined,
+                "age": age,
+                "segment": patient.get("segment", "N/A"),
                 "b2b": patient.get("B2B", "N/A"),
                 "sample_collector": patient.get("sample_collector", "N/A"),
                 "salesMapping": patient.get("salesMapping", "N/A"),
@@ -1262,13 +1619,22 @@ def overall_report(request):
                 "payment_method": partial_payment_method,
                 "test_names": testnames,
                 "no_of_tests": no_of_tests,
+                "bill_no": patient.get("bill_no", "N/A"),
+                "registeredby": patient.get("registeredby", "N/A"),
+                "barcode": barcode,
+                "status": status,
             })
+
         return JsonResponse(formatted_data, safe=False)
-    return JsonResponse({"error": "Invalid request method. Only GET is allowed."}, status=405)
+    except Exception as e:
+        print("Critical Error:", str(e))
+        print(traceback.format_exc())
+        return JsonResponse({"error": str(e)}, status=500)
+
 
 @api_view(['GET'])
 @csrf_exempt
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def patient_test_sorting(request):
     try:
         patient_id = request.GET.get('patient_id')
@@ -1301,7 +1667,7 @@ def patient_test_sorting(request):
 
 
 @api_view(['POST'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def send_email(request):
     try:
         subject = request.data.get('subject', 'No Subject')
@@ -1335,7 +1701,7 @@ def send_email(request):
 
 # Define the timezone for India Standard Time (IST)
 IST = pytz.timezone('Asia/Kolkata')
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 class ConsolidatedDataView(APIView):
     def get(self, request):
         # Default to today's date if no date is provided

@@ -31,9 +31,6 @@ DEBUG = True
 ALLOWED_HOSTS = [
     "localhost",
     "127.0.0.1",
-    "salemcosmeticclinic.netlify.app",
-    "shinovadatabase.in",
-    "api.shinovadatabase.in",
     "node219938-env-0309642.in1.cloudlets.co.in",
     "3.109.122.211",
     "lab.shinovadatabase.in",
@@ -107,7 +104,6 @@ DATABASES = {
         'ENFORCE_SCHEMA': False,
         'CLIENT': {
             'host': os.getenv("GLOBAL_DB_HOST"),
-            'password': os.getenv("GLOBAL_DB_PASSWORD"),
             # 'tls': True,
             # 'tlsCAFile': certifi.where(),
         }

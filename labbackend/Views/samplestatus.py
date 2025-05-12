@@ -9,12 +9,12 @@ from django.utils import timezone
 from datetime import timedelta
 from datetime import datetime
 import os
-
+from pymongo import MongoClient
 #models
 from ..models import SampleStatus 
 from ..models import BarcodeTestDetails
 
-
+from ..auth.permissions import SkipPermissionsIfDisabled
 #auth
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -25,7 +25,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 @api_view(['GET'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_samplepatients_by_date(request):
     date = request.GET.get('date')
     if not date:
@@ -58,7 +58,7 @@ def get_samplepatients_by_date(request):
 
 @api_view(['POST'])
 @csrf_exempt
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def sample_status(request):
     if request.method == 'POST':
         try:
@@ -102,11 +102,11 @@ def sample_status(request):
 
 @api_view(['PUT'])
 @csrf_exempt
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def update_sample_status(request, patient_id):
     password = quote_plus('Smrft@2024')
     # MongoDB connection with TLS certificate
-    client = MongoClient(os.getenv('DB_HOST'))
+    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
     db = client.Lab  # Database name
     collection = db.labbackend_samplestatus
     if request.method == 'PUT':
@@ -159,7 +159,7 @@ def update_sample_status(request, patient_id):
 
 @api_view(['GET'])
 @csrf_exempt
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_sample_collected(request):
     if request.method == "GET":
         try:
@@ -206,12 +206,12 @@ def get_sample_collected(request):
 
 @api_view(['PUT'])
 @csrf_exempt
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def update_sample_collected(request, patient_id):
     # MongoDB connection setup
-    password = quote_plus('Smrft@2024')
+    #password = quote_plus('Smrft@2024')
     # MongoDB connection with TLS certificate
-    client = MongoClient(os.getenv('DB_HOST'))
+    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
     db = client.Lab  # Database name
     collection = db.labbackend_samplestatus  # Collection name
     if request.method == "PUT":
@@ -227,12 +227,20 @@ def update_sample_collected(request, patient_id):
             # Parse testdetails as a Python list
             testdetails = json.loads(patient_sample.get('testdetails', '[]'))
             # Apply updates based on testIndex
+            
+            # Import the proper Django timezone module
+            from django.utils import timezone
+            import pytz
+            
+            # Configure IST timezone
+            ist_timezone = pytz.timezone('Asia/Kolkata')
+            
             for update in updates:
                 testIndex = update.get("testIndex")
                 new_status = update.get("samplestatus")
                 received_by = update.get("received_by")
                 rejected_by = update.get("rejected_by")
-                outsourced_by = update.get("oursourced_by")
+                outsourced_by = update.get("outsourced_by")  # Fixed typo in variable name
                 remarks = update.get("remarks")  # New field for rejection remarks
                 if testIndex is None or new_status is None:
                     return JsonResponse({"error": "samplestatus and testIndex are required"}, status=400)
@@ -242,9 +250,11 @@ def update_sample_collected(request, patient_id):
                 test_entry = testdetails[testIndex]
                 # Update the sample status and associated fields
                 test_entry['samplestatus'] = new_status
-                # Get current time in the correct timezone
-                current_time = timezone.now().astimezone(timezone.get_current_timezone())
+                
+                # Get current time in IST timezone
+                current_time = timezone.now().astimezone(ist_timezone)
                 formatted_time = current_time.strftime('%Y-%m-%d %H:%M:%S')  # Format the time
+                
                 if new_status == "Received":
                     test_entry['received_time'] = formatted_time
                     test_entry['received_by'] = received_by
@@ -253,8 +263,9 @@ def update_sample_collected(request, patient_id):
                     test_entry['rejected_by'] = rejected_by
                     test_entry['remarks'] = remarks  # Add rejection remarks
                 elif new_status == "Outsource":
-                    test_entry['oursourced_time'] = formatted_time
-                    test_entry['oursourced_by'] = outsourced_by
+                    test_entry['outsourced_time'] = formatted_time  # Fixed typo in field name
+                    test_entry['outsourced_by'] = outsourced_by  # Fixed typo in field name
+            
             # Save changes back to the database
             collection.update_one(
                 {"patient_id": patient_id},
@@ -265,7 +276,7 @@ def update_sample_collected(request, patient_id):
             return JsonResponse({"error": str(e)}, status=500)
 
 @api_view(['GET'])       
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_received_samples(request):
     # Get patient_id and date from the query parameters
     patient_id = request.GET.get('patient_id')

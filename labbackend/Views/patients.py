@@ -10,8 +10,9 @@ from django.db.models import Max
 from datetime import datetime
 from django.forms.models import model_to_dict
 import json
+import re
 from ..models import Patient
-
+from ..auth.permissions import SkipPermissionsIfDisabled
 from datetime import datetime, timedelta
 #auth
 from rest_framework.decorators import api_view, permission_classes
@@ -21,7 +22,7 @@ from pyauth.auth import HasRoleAndDataPermission
 
 @api_view(['POST'])
 @csrf_exempt
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def create_patient(request):
     if request.method == 'POST':
         serializer = PatientSerializer(data=request.data)
@@ -32,16 +33,15 @@ def create_patient(request):
     
 
 @api_view(['GET'])
-@permission_classes([HasRoleAndDataPermission])
 def get_latest_patient_id(request):
-    # Fetch the latest patient ID from the database
-    latest_patient = Patient.objects.aggregate(Max('patient_id'))
-    # If there's a patient ID, increment it, otherwise start with SD001
-    if latest_patient['patient_id__max']:
-        current_id = int(latest_patient['patient_id__max'].replace('SD', ''))
-        new_patient_id = f"SD{str(current_id + 1).zfill(3)}"
-    else:
-        new_patient_id = "SD001"
+    patients = Patient.objects.values_list('patient_id', flat=True)
+    max_id = 0
+    for pid in patients:
+        match = re.match(r'^SD(\d+)$', pid)
+        if match:
+            num = int(match.group(1))
+            max_id = max(max_id, num)
+    new_patient_id = f"SD{max_id + 1}"
     return Response({"patient_id": new_patient_id}, status=status.HTTP_200_OK)
 
 
@@ -64,7 +64,7 @@ def get_latest_bill_no(request):
 
 @api_view(['GET'])
 @csrf_exempt
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_all_patients(request):
     # Retrieve patients where segment is "B2B"
     patients = Patient.objects.filter(segment="B2B")
@@ -74,7 +74,7 @@ def get_all_patients(request):
 
 
 @api_view(['GET'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_patients(request):
     """Fetch patients registered on a given date"""
     date_str = request.GET.get('date', None)  # Get date from request parameters
@@ -93,7 +93,7 @@ def get_patients(request):
 
 @api_view(['GET'])
 @csrf_exempt
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def patients_by_date(request):
     if request.method == "GET":
         date_str = request.GET.get("date")
@@ -132,7 +132,7 @@ def patients_by_date(request):
 
 @api_view(['GET'])
 @csrf_exempt
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_patient_details(request):
     patient_id = request.GET.get('patient_id')
     phone = request.GET.get('phone')
@@ -174,7 +174,7 @@ def get_patient_details(request):
     
 
 @api_view(['GET'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_patients_by_date(request):
     start_date = request.GET.get('start_date')
     end_date = request.GET.get('end_date')
@@ -234,15 +234,17 @@ def get_patients_by_date(request):
 
 
 @api_view(['GET'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def patient_overview(request):
     patients = Patient.objects.all()
     serializer = PatientSerializer(patients, many=True)  # Serialize the queryset
     return Response(serializer.data)
 
+
+
 @api_view(['GET'])
 @csrf_exempt
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_patient_by_id(request, patient_id):
     """
     API endpoint to fetch patient details based on patient ID.

@@ -14,6 +14,7 @@ from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_GET
 import os
 #auth
+from ..auth.permissions import SkipPermissionsIfDisabled
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.permissions import AllowAny
@@ -23,13 +24,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-client = MongoClient(os.getenv('DB_HOST'))
+client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
 db = client["Lab"]
 collection = db["labbackend_patient"]
 
 @api_view(['PUT'])
 @csrf_exempt
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def update_patient(request, patient_id):
     if request.method == "PUT":
         try:
@@ -55,7 +56,7 @@ def update_patient(request, patient_id):
 
 
 @api_view(['GET'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_patient_tests(request, patient_id, date):
     """Fetch test details for a given patient ID and date"""
     try:
@@ -107,22 +108,29 @@ def get_patient_tests(request, patient_id, date):
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
+
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.response import Response
+from rest_framework import status
+from urllib.parse import quote_plus
+from pymongo import MongoClient
+import os
+
 @api_view(['PATCH'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def update_billing(request, patient_id):
     password = quote_plus('Smrft@2024')
-    client = MongoClient(os.getenv('DB_HOST'))
+    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
     db = client.Lab
     collection = db['labbackend_patient']
 
-    # Check if patient exists
     patient = collection.find_one({"patient_id": patient_id})
     if not patient:
         return Response({"error": "Patient not found"}, status=status.HTTP_404_NOT_FOUND)
 
     new_data = request.data
 
-    # Convert `totalAmount` and `credit_amount` to numbers if possible
     if "totalAmount" in new_data:
         try:
             new_data["totalAmount"] = str(new_data["totalAmount"])
@@ -135,15 +143,11 @@ def update_billing(request, patient_id):
         except ValueError:
             return Response({"error": "Invalid credit_amount format"}, status=status.HTTP_400_BAD_REQUEST)
 
-    # Ensure `testname` remains unchanged
-    if "testname" in new_data:
-        if not isinstance(new_data["testname"], (list, str)):
-            return Response({"error": "Invalid testname format"}, status=status.HTTP_400_BAD_REQUEST)
+    if "testname" in new_data and not isinstance(new_data["testname"], (list, str)):
+        return Response({"error": "Invalid testname format"}, status=status.HTTP_400_BAD_REQUEST)
 
-    # Update MongoDB document
     collection.update_one({"patient_id": patient_id}, {"$set": new_data})
 
-    # Fetch updated patient data
     updated_patient = collection.find_one({"patient_id": patient_id})
     if updated_patient and "_id" in updated_patient:
         updated_patient["_id"] = str(updated_patient["_id"])
@@ -154,14 +158,15 @@ def update_billing(request, patient_id):
 
 
 
+
 @api_view(['PATCH'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def update_credit_amount(request, patient_id):
     # MongoDB connection setup
     password = quote_plus('Smrft@2024')
 
         # MongoDB connection with TLS certificate
-    client = MongoClient(os.getenv('DB_HOST'))
+    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
 
     db = client.Lab  # Database name
     collection = db['labbackend_patient']
@@ -202,11 +207,11 @@ def update_credit_amount(request, patient_id):
 
 @api_view(['PATCH'])
 @csrf_exempt
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def credit_amount_update(request, patient_id):
     password = quote_plus('Smrft@2024')
     # MongoDB connection with TLS certificate
-    client = MongoClient(os.getenv('DB_HOST'))
+    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
     db = client.Lab
     collection = db['labbackend_patient']
     if request.method == "PATCH":

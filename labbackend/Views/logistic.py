@@ -16,14 +16,14 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.permissions import AllowAny
 from pyauth.auth import HasRoleAndDataPermission
-
+from ..auth.permissions import SkipPermissionsIfDisabled
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
 
 @api_view(['POST'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def save_logistic_data(request):
     if request.method == 'POST':
         serializer = LogisticDataSerializer(data=request.data)
@@ -34,7 +34,7 @@ def save_logistic_data(request):
    
    
 @api_view(['GET'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_logistic_data(request):
     if request.method == 'GET':
         data = LogisticData.objects.all()  # Fetch all logistic data
@@ -44,7 +44,7 @@ def get_logistic_data(request):
 
 
 @api_view(['POST', 'GET'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def savesamplecollectordetails(request):
     if request.method == 'POST':
         tasks_data = request.data
@@ -69,15 +69,30 @@ def savesamplecollectordetails(request):
                     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         return Response({"message": "Tasks saved successfully."}, status=status.HTTP_201_CREATED)
     elif request.method == 'GET':
-        tasks = LogisticTask.objects.all()  # Fetch all logistic data
+        # Get date filter parameters from the request
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        
+        # Start with all tasks
+        tasks = LogisticTask.objects.all()
+        
+        # Apply date filters if provided
+        if start_date:
+            tasks = tasks.filter(date__gte=start_date)
+        if end_date:
+            tasks = tasks.filter(date__lte=end_date)
+        
+        # Order by date (most recent first)
+        tasks = tasks.order_by('-date')
+        
         serializer = LogisticTaskSerializer(tasks, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 @api_view(['PATCH'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def update_sample_collector_details(request):
     password = quote_plus('Smrft@2024')
-    client = MongoClient(os.getenv('DB_HOST'))
+    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
     db = client["Lab"]
     collection = db["labbackend_logistictask"]
     try:
@@ -112,7 +127,7 @@ def update_sample_collector_details(request):
     
 
 @api_view(['GET'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def getlogisticdatabydate(request):
     # Get query parameters
     sample_collector = request.GET.get('sampleCollector', None)
@@ -127,7 +142,7 @@ def getlogisticdatabydate(request):
 
 
 @api_view(['GET'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def getsalesmapping(request):
     if request.method == 'GET':
         data = SalesVisitLog.objects.all()
@@ -136,7 +151,7 @@ def getsalesmapping(request):
     
 
 @api_view(['GET'])
-@permission_classes([HasRoleAndDataPermission])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def logisticdashboard(request):
     sample_collector = request.GET.get('sampleCollector')
     selected_date = request.GET.get('date')

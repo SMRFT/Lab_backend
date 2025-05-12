@@ -91,7 +91,7 @@ TEMPLATES = [
 WSGI_APPLICATION = 'backend.wsgi.application'
 CORS_ORIGIN_ALLOW_ALL = True
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000","http://localhost:3001",'https://salemcosmeticclinic.netlify.app','https://shinovadatabase.in','https://api.shinovadatabase.in']
+    "http://localhost:3000","http://localhost:3001"]
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/3.2/howto/static-files/
 
@@ -101,19 +101,7 @@ STATIC_URL = '/static/'
 # https://docs.djangoproject.com/en/3.2/ref/settings/#databases
 import certifi
 
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'djongo',
-#         'NAME': 'Lab',
-#         'ENFORCE_SCHEMA': False,
-#         'CLIENT': {
-#             'host': 'mongodb+srv://shinovalab:<db_password>@cluster0.xbq9c.mongodb.net/?retryWrites=true&w=majority',
-#             'password': 'Smrft@2024',
-#             'tls': True,  # Enable TLS/SSL
-#             'tlsCAFile': certifi.where(),  # Use certifi's CA certificate
-#         }
-#     }
-# }
+
 import certifi
 DATABASES = {
     'default': {
@@ -122,23 +110,10 @@ DATABASES = {
         'ENFORCE_SCHEMA': False,
         'CLIENT': {
             'host': os.getenv("GLOBAL_DB_HOST"),
-            'password': os.getenv("GLOBAL_DB_PASSWORD"),
-            # 'tls': True,
-            # 'tlsCAFile': certifi.where(),
         }
     }
 }
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'djongo',
-#         'NAME': os.getenv("DB_NAME"),
-#         'ENFORCE_SCHEMA': False,
-#         'CLIENT': {
-#             'host': os.getenv("DB_HOST"),
-#             'tls': False,  # ✅ Disable TLS if not required
-#         }
-#     }
-# }
+
 # Password validation
 # https://docs.djangoproject.com/en/3.2/ref/settings/#auth-password-validators
 

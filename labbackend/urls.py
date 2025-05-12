@@ -98,7 +98,7 @@ urlpatterns = [
     path('get_patients/', get_patients, name='get_patients'),
     path('patient/update_billing/<str:patient_id>/', update_billing, name='update_billing'),
     path('patient/tests/<str:patient_id>/<str:date>/', get_patient_tests, name='get_patient_tests'),
-    path('clinical_name/', clinical_name, name='create_organisation'),
+    path('clinical_name/', clinical_name, name='clinical_name'),
     path('clinical_name/last/', get_last_referrer_code, name='get_last_referrer_code'),
     path('clinical-names/', ClinicalNameViewSet.as_view({'get': 'list'}), name='clinical-names-list'),
     path('clinical-names/<str:referrerCode>/', ClinicalNameViewSet.as_view({'get': 'retrieve'}), name='clinical-name-detail'),
@@ -116,5 +116,7 @@ urlpatterns = [
     path('sample_collector_location/', sample_collector_location, name='save_collector_location'),
     path('get_clinicalname/', get_clinicalname, name='get_clinicalname'),
     path('patients-by-date/', patients_by_date),
+    path('send_approval_email/', views.send_approval_email, name='send_approval_email'),
+    path('approve_test/', views.approve_test, name='approve_test'),
 
 ]

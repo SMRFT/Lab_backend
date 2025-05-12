@@ -1,6 +1,24 @@
 from django.db import models
 from datetime import datetime
-class Register(models.Model):
+from django.utils.timezone import now
+
+class AuditModel(models.Model):
+    created_by = models.CharField(max_length=100, blank=True, null=True)
+    created_date = models.DateTimeField(auto_now_add=True)
+    lastmodified_by = models.CharField(max_length=100, blank=True, null=True)
+    lastmodified_date = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        abstract = True
+
+    def save(self, *args, **kwargs):
+        if not self.created_by:
+            self.created_by = "system"
+        self.lastmodified_by = self.lastmodified_by or "system"
+        super().save(*args, **kwargs)
+
+
+class Register(AuditModel):
     name = models.CharField(max_length=500)
     role = models.CharField(max_length=500)
     password = models.CharField(max_length=500)
@@ -8,7 +26,7 @@ class Register(models.Model):
 
 
 #new registration
-class Patient(models.Model):
+class Patient(AuditModel):
     patient_id = models.CharField(max_length=10)
     patientname = models.CharField(max_length=100)
     phone = models.CharField(max_length=15, blank=True)
@@ -51,7 +69,7 @@ class Patient(models.Model):
         return self.patientname
     
 
-class ClinicalName(models.Model):
+class ClinicalName(AuditModel):
     # Using referrerCode as primary key instead of id
     referrerCode = models.CharField(max_length=10, primary_key=True)
     clinicalname = models.CharField(max_length=255)
@@ -92,7 +110,7 @@ class ClinicalName(models.Model):
         return f"{self.clinicalname} ({self.referrerCode})"
 
     
-class RefBy(models.Model):
+class RefBy(AuditModel):
     name = models.CharField(max_length=255)
     qualification = models.CharField(max_length=255, blank=True, null=True)
     specialization = models.CharField(max_length=255, blank=True, null=True)
@@ -102,16 +120,18 @@ class RefBy(models.Model):
         return f"{self.name}"
     
     
-class SampleCollector(models.Model):
+class SampleCollector(AuditModel):
     name = models.CharField(max_length=255, blank=True, null=True)
     gender  = models.CharField(max_length=255, blank=True, null=True)
     phone  = models.CharField(max_length=255, blank=True, null=True)
     email = models.EmailField()
     def __str__(self):
         return f"{self.name}"
-    
+
+
+
 from bson import ObjectId  # Import ObjectId from bson
-class TestValue(models.Model):
+class TestValue(AuditModel):
     _id = models.CharField(max_length=50, primary_key=True)
     patient_id = models.CharField(max_length=10)
     patientname = models.CharField(max_length=100)
@@ -119,14 +139,15 @@ class TestValue(models.Model):
     date = models.DateField()
     barcode= models.CharField(max_length=50)
     testdetails = models.JSONField()  # Store all test details in JSON format
-    # approved_by = models.CharField(max_length=200, null=True, blank=True)
+    verified_by = models.CharField(max_length=200)
     def save(self, *args, **kwargs):
         if not self._id:
             self._id = str(ObjectId())  # Convert ObjectId to string
         super().save(*args, **kwargs)
-    
-    
-class SampleStatus(models.Model):
+
+
+
+class SampleStatus(AuditModel):
     patient_id = models.CharField(max_length=100)
     patientname = models.CharField(max_length=100)
     barcode= models.CharField(max_length=50)
@@ -138,7 +159,7 @@ class SampleStatus(models.Model):
         return self.patientname
 
 
-class BarcodeTestDetails(models.Model):
+class BarcodeTestDetails(AuditModel):
     patient_id = models.CharField(max_length=50)
     patientname = models.CharField(max_length=255)
     segment= models.CharField(max_length=100, blank=True)
@@ -153,7 +174,7 @@ class BarcodeTestDetails(models.Model):
         return f"{self.patientname} - {self.patient_id}"
 
 
-class SalesVisitLog(models.Model):
+class SalesVisitLog(AuditModel):
     date = models.DateField()
     time = models.CharField(max_length=255)
     clinicalname = models.CharField(max_length=255,blank=True)
@@ -170,7 +191,7 @@ class SalesVisitLog(models.Model):
 
 
 from django.db import models
-class HospitalLab(models.Model):
+class HospitalLab(AuditModel):
     TYPE_CHOICES = [
         ('StandAlone', 'StandAlone'),
         ('Lab', 'Lab'),
@@ -185,7 +206,7 @@ class HospitalLab(models.Model):
         return self.hospitalName
 
 
-class LogisticData(models.Model):
+class LogisticData(AuditModel):
     date = models.DateField()
     sampleordertime = models.CharField(max_length=255)
     labName= models.CharField(max_length=255)
@@ -195,7 +216,7 @@ class LogisticData(models.Model):
         return f"{self.labName} - {self.date}"
     
 
-class LogisticTask(models.Model):
+class LogisticTask(AuditModel):
     sampleCollector = models.CharField(max_length=255)
     date = models.DateField()
     sampleordertime = models.CharField(max_length=255)
@@ -210,7 +231,7 @@ class LogisticTask(models.Model):
         return f"{self.date} - {self.lab_name} - {self.salesMapping}"
 
 
-class SampleCollectorLocation(models.Model):
+class SampleCollectorLocation(AuditModel):
     id = models.CharField(primary_key=True,max_length=50)  # Use AutoField for auto-incrementing IDs
     sampleCollector = models.CharField(max_length=255)
     date = models.DateField()
