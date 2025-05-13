@@ -74,7 +74,7 @@ otp_storage_refund = {}
 
 
 
-
+@csrf_exempt
 def generate_otp_refund(request):
     if request.method == "POST":
         try:
@@ -257,7 +257,7 @@ otp_storage_cancellation = {}
 
 
 
-
+@csrf_exempt
 def generate_otp_cancellation(request):
     if request.method == "POST":
         try:
