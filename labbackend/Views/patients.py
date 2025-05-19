@@ -11,7 +11,7 @@ from datetime import datetime
 from django.forms.models import model_to_dict
 import json
 import re
-from ..models import Patient
+from ..models import Patient ,ClinicalName
 from ..auth.permissions import SkipPermissionsIfDisabled
 from datetime import datetime, timedelta
 #auth
