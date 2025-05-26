@@ -11,7 +11,7 @@ from datetime import datetime
 from django.forms.models import model_to_dict
 import json
 import re
-from ..models import Patient
+from ..models import Patient ,ClinicalName
 from ..auth.permissions import SkipPermissionsIfDisabled
 from datetime import datetime, timedelta
 #auth
@@ -62,31 +62,52 @@ def get_latest_bill_no(request):
     return Response({"bill_no": new_bill_no}, status=status.HTTP_200_OK)
 
 
-@api_view(['GET'])
-@csrf_exempt
+
+
+
 @permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
-def get_all_patients(request):
-    # Retrieve patients where segment is "B2B"
-    patients = Patient.objects.filter(segment="B2B")
-
-    serializer = PatientSerializer(patients, many=True)
-    return Response(serializer.data, status=status.HTTP_200_OK)
-
-
 @api_view(['GET'])
-@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_patients(request):
-    """Fetch patients registered on a given date"""
+    """Fetch patients registered on a given date with payment mode options based on segment"""
     date_str = request.GET.get('date', None)  # Get date from request parameters
+
     if not date_str:
         return Response({"error": "Date parameter is required"}, status=status.HTTP_400_BAD_REQUEST)
+
     try:
         selected_date = datetime.strptime(date_str, "%Y-%m-%d").date()  # Convert to date object
-        # Filter using range to get all records for the selected date
         next_day = selected_date + timedelta(days=1)
         patients = Patient.objects.filter(date__gte=selected_date, date__lt=next_day)
-        serializer = PatientSerializer(patients, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+
+        result = []
+        for patient in patients:
+            patient_data = PatientSerializer(patient).data
+
+            # Default payment options (all enabled)
+            payment_options = {
+                'credit': True,
+                'partialpayment': True,
+                'cash': True,
+                'upi': True,
+                'card': True,
+            }
+
+            if patient.segment == 'B2B' and patient.B2B:
+                try:
+                    clinical_info = ClinicalName.objects.get(referrerCode=patient.lab_id)
+
+                    if clinical_info.b2bType == 'Cash':
+                        payment_options['credit'] = False  # Disable credit
+                        payment_options['partialpayment'] = False  # Disable partial payment
+
+                except ClinicalName.DoesNotExist:
+                    pass  # Keep default payment options if no matching clinical info
+
+            patient_data['payment_options'] = payment_options
+            result.append(patient_data)
+
+        return Response(result, status=status.HTTP_200_OK)
+
     except ValueError:
         return Response({"error": "Invalid date format. Use YYYY-MM-DD"}, status=status.HTTP_400_BAD_REQUEST)
     

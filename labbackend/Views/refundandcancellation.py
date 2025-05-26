@@ -73,9 +73,8 @@ def search_refund(request):
 otp_storage_refund = {}
 
 
-@api_view(['POST'])
+
 @csrf_exempt
-@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def generate_otp_refund(request):
     if request.method == "POST":
         try:
@@ -257,9 +256,8 @@ def search_cancellation(request):
 otp_storage_cancellation = {}
 
 
-@api_view(['POST'])
+
 @csrf_exempt
-@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def generate_otp_cancellation(request):
     if request.method == "POST":
         try:

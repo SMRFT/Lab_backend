@@ -8,12 +8,12 @@ from rest_framework_simplejwt.views import (
 
 from .Views import whatsapp
 from labbackend.Views.Security import registration ,login
-from labbackend.Views.patients import create_patient,get_all_patients,get_latest_bill_no,get_latest_patient_id,get_patient_details,get_patients_by_date,patient_overview,get_patient_by_id,get_patients,patients_by_date
+from labbackend.Views.patients import create_patient,get_latest_bill_no,get_latest_patient_id,get_patient_details,get_patients_by_date,patient_overview,get_patient_by_id,get_patients,patients_by_date
 from labbackend.Views.barcode import get_max_barcode,save_barcodes,get_existing_barcode,get_barcode_by_date,check_barcode
 from labbackend.Views.location import sample_collector_location
 from labbackend.Views.salesvisit import salesvisitlog ,get_sales_log,hospitallabform,salesdashboard
 from labbackend.Views.addform import sample_collector ,refby
-from labbackend.Views.Invoice import generate_invoice,get_invoices,delete_invoice,update_invoice
+from labbackend.Views.Invoice import generate_invoice,get_invoices,delete_invoice,update_invoice,get_clinicalname_invoice,get_all_patients,patient_report
 from labbackend.Views.updatebillingandpatient import update_patient,update_credit_amount,update_billing,get_patient_tests,credit_amount_update
 from labbackend.Views.samplestatus import get_received_samples ,get_sample_collected,update_sample_collected,get_samplepatients_by_date,sample_status,update_sample_status
 from labbackend.Views.logistic import save_logistic_data,get_logistic_data,getlogisticdatabydate,savesamplecollectordetails,update_sample_collector_details,getsalesmapping,logisticdashboard
@@ -36,7 +36,7 @@ urlpatterns = [
     path('patients/', get_patients_by_date, name='get_patients_by_date'),
     path('patients/<str:patient_id>/', get_patients_by_date, name='get_patients_by_date'),
     path('get_received_samples/', get_received_samples, name='get_received_samples'),
-    path('patient_report/', views.patient_report, name='patient_report'),
+    path('patient_report/', patient_report, name='patient_report'),
     path('test_details/', views.get_test_details, name='get_test_details'),
     path('test_details_test/', views.handle_patch_request, name='get_test_details'),
     path('test_parameters/<str:test_name>/', views.get_test_parameters, name='get_test_parameters'),
@@ -115,6 +115,7 @@ urlpatterns = [
     path('dashboard-data/', dashboard_data, name='dashboard_data'),
     path('sample_collector_location/', sample_collector_location, name='save_collector_location'),
     path('get_clinicalname/', get_clinicalname, name='get_clinicalname'),
+    path('get_clinicalname_invoice/', get_clinicalname_invoice, name='get_clinicalname_by_referrer'),
     path('patients-by-date/', patients_by_date),
     path('send_approval_email/', views.send_approval_email, name='send_approval_email'),
     path('approve_test/', views.approve_test, name='approve_test'),
