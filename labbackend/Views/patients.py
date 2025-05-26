@@ -65,6 +65,7 @@ def get_latest_bill_no(request):
 
 
 
+
 @permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 @api_view(['GET'])
 def get_patients(request):

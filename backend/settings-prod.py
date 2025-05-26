@@ -39,7 +39,8 @@ ALLOWED_HOSTS = [
     "3.109.122.211",
     "lab.shinovadatabase.in",
     "node221967-env-5683222.in1.cloudlets.co.in",
-    'env-5683222.in1.cloudlets.co.in'
+    'env-5683222.in1.cloudlets.co.in',
+    'shinova.in1.cloudlets.co.in'
 ]
 
 X_FRAME_OPTIONS = 'ALLOWALL'
@@ -106,7 +107,7 @@ import certifi
 DATABASES = {
     'default': {
         'ENGINE': 'djongo',
-        'NAME': os.getenv("LAB_DB_NAME"),
+        'NAME': os.getenv("LAB_DB_NAME",'Lab'),
         'ENFORCE_SCHEMA': False,
         'CLIENT': {
             'host': os.getenv("GLOBAL_DB_HOST"),
@@ -166,4 +167,5 @@ EMAIL_USE_TLS = True
 EMAIL_HOST_USER = 'resultssmrft@gmail.com'
 EMAIL_HOST_PASSWORD = 'nfkk krtt htoq asge'  # Consider using env vars for security
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+
 
