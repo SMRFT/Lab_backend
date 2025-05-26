@@ -41,6 +41,7 @@ ALLOWED_HOSTS = [
     "node221967-env-5683222.in1.cloudlets.co.in",
     'env-5683222.in1.cloudlets.co.in',
     'test.shinova.in',
+    "shinova.in1.cloudlets.co.in",
     'shinova.in'
 ]
 
