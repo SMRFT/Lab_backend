@@ -62,15 +62,7 @@ def get_latest_bill_no(request):
     return Response({"bill_no": new_bill_no}, status=status.HTTP_200_OK)
 
 
-@api_view(['GET'])
-@csrf_exempt
-@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
-def get_all_patients(request):
-    # Retrieve patients where segment is "B2B"
-    patients = Patient.objects.filter(segment="B2B")
 
-    serializer = PatientSerializer(patients, many=True)
-    return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 

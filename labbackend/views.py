@@ -46,198 +46,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-def convert_to_float(value):
-    try:
-        return float(value)
-    except (ValueError, TypeError):
-        return 0.0
 
-def convert_to_float(value):
-    try:
-        return float(value)
-    except (ValueError, TypeError):
-        return 0.0
 
-@api_view(['GET'])
-@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
-def patient_report(request):
-    start_date_str = request.GET.get('start_date')
-    end_date_str = request.GET.get('end_date')
-    
-    if not start_date_str or not end_date_str:
-        return JsonResponse({"error": "Start date and end date are required"}, status=400)
-    
-    try:
-        start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
-        end_date = datetime.strptime(end_date_str, "%Y-%m-%d") + timedelta(days=1)  # Include full end date
-    except ValueError:
-        return JsonResponse({"error": "Invalid date format. Use YYYY-MM-DD."}, status=400)
-    
-    # MongoDB Connection Setup
-    #password = quote_plus('Smrft@2024')
-    client = MongoClient(
-        'mongodb://admin:ifS2nTs6vm@103.205.141.208:27017/Lab?authSource=admin',
-        tls=True,
-        tlsAllowInvalidCertificates=True  # <-- bypass certificate verification
-    )
-    db = client.Lab
-    patients_collection = db["labbackend_patient"]  # MongoDB collection
-    
-    # Query MongoDB - We need to find ALL patients that might have refunds during our date range
-    # This means we can't filter by patient.date alone, as refunds might occur on a different day
-    patients = patients_collection.find()
-    
-    # Dictionary to group data by date
-    report_by_date = defaultdict(lambda: {
-        'gross_amount': 0,
-        'discount': 0,
-        'due_amount': 0,
-        'net_amount': 0,
-        'pending_amount': 0,
-        'total_collection': 0,
-        'credit_payment_received': 0,  # Track credit payments received
-        'refund_amount': 0,  # Track refunds processed
-        'payment_totals': {'Cash': 0, 'UPI': 0, 'Neft': 0, 'Cheque': 0, 'Credit': 0, 'PartialPayment': 0}
-    })
-    
-    # Process each patient's data
-    # Process each patient's data
-    for patient in patients:
-        patient_date = patient.get('date')
-        if not patient_date:
-            continue
-            
-        # Check if the patient's original transaction date is within our range
-        patient_in_range = start_date <= patient_date < end_date
-        
-        # If patient's transaction date is within range, process regular transaction data
-        if patient_in_range:
-            date_key = patient_date.strftime("%Y-%m-%d")  # Convert date to string for JSON response
-            gross_amount = convert_to_float(patient.get('totalAmount', 0))
-            discount = convert_to_float(patient.get('discount', 0))
-            
-            # CHANGED: Get due_amount from credit_amount instead of PartialPayment
-            due_amount = convert_to_float(patient.get('credit_amount', 0))
-            
-            # Update values for the transaction date
-            report_by_date[date_key]['gross_amount'] += gross_amount
-            report_by_date[date_key]['discount'] += discount
-            report_by_date[date_key]['due_amount'] += due_amount
-            
-            # Process payment method totals from main payment
-            payment_method = patient.get('payment_method', '')
-            payment_method_dict = {}
-            
-            if isinstance(payment_method, str) and payment_method.strip():
-                try:
-                    payment_method_dict = json.loads(payment_method)
-                except json.JSONDecodeError:
-                    payment_method_dict = {}
-            elif isinstance(payment_method, dict):
-                payment_method_dict = payment_method
-            
-            if isinstance(payment_method_dict, dict):
-                method = payment_method_dict.get('paymentmethod')
-                if method in report_by_date[date_key]['payment_totals']:
-                    # Only add to payment totals if it's not a credit transaction
-                    if method != 'Credit':
-                        report_by_date[date_key]['payment_totals'][method] += gross_amount
-                    else:
-                        # If it's credit, add to the Credit payment method total
-                        report_by_date[date_key]['payment_totals']['Credit'] += gross_amount
-        
-        # Process credit_details - this is for payments against previous credits
-        # We process these regardless of patient transaction date to catch any credit payments in our date range
-        credit_details = patient.get('credit_details', '')
-        credit_details_list = []
-        
-        if isinstance(credit_details, str) and credit_details.strip():
-            try:
-                credit_details_list = json.loads(credit_details)
-            except json.JSONDecodeError:
-                credit_details_list = []
-        elif isinstance(credit_details, list):
-            credit_details_list = credit_details
-            
-        # Process each credit payment entry
-        if isinstance(credit_details_list, list):
-            for payment in credit_details_list:
-                payment_date_str = payment.get('paid_date')
-                if payment_date_str:
-                    try:
-                        payment_date = datetime.strptime(payment_date_str, "%Y-%m-%d").date()
-                        # If payment date falls within report range, add to the appropriate date
-                        if start_date.date() <= payment_date < end_date.date():
-                            payment_date_key = payment_date.strftime("%Y-%m-%d")
-                            amount_paid = convert_to_float(payment.get('amount_paid', 0))
-                            payment_method = payment.get('payment_method')
-                            # Add to credit payment received for that day
-                            report_by_date[payment_date_key]['credit_payment_received'] += amount_paid
-                            # Add to payment method totals
-                            if payment_method in report_by_date[payment_date_key]['payment_totals']:
-                                report_by_date[payment_date_key]['payment_totals'][payment_method] += amount_paid
-                    except ValueError:
-                        # Invalid date format, skip this payment
-                        continue
-        
-        # Process refunds in testname field
-        # We process these for ALL patients to catch any refunds that occurred during our date range
-        testname_data = patient.get('testname', '')
-        test_list = []
-        
-        if isinstance(testname_data, str) and testname_data.strip():
-            try:
-                test_list = json.loads(testname_data)
-            except json.JSONDecodeError:
-                test_list = []
-        elif isinstance(testname_data, list):
-            test_list = testname_data
-            
-        # Process each test for refunds
-        if isinstance(test_list, list):
-            for test in test_list:
-                if isinstance(test, dict) and test.get('refund') is True:
-                    refunded_date_str = test.get('refunded_date')
-                    if refunded_date_str:
-                        try:
-                            # Parse the refund date - handle both date and datetime formats
-                            if 'T' in refunded_date_str:  # ISO format with time
-                                refund_date = datetime.fromisoformat(refunded_date_str).date()
-                            else:  # Just date format
-                                refund_date = datetime.strptime(refunded_date_str, "%Y-%m-%d").date()
-                                
-                            # If refund date falls within report range, add to the appropriate date
-                            if start_date.date() <= refund_date < end_date.date():
-                                refund_date_key = refund_date.strftime("%Y-%m-%d")
-                                test_amount = convert_to_float(test.get('amount', 0))
-                                # Add to refund amount for that day
-                                report_by_date[refund_date_key]['refund_amount'] += test_amount
-                        except (ValueError, TypeError):
-                            # Invalid date format, skip this refund
-                            continue
-    
-    # Convert to list format
-    report_list = []
-    for date, data in sorted(report_by_date.items()):
-        # Calculate net amount (gross - discount - due)
-        net_amount = data['gross_amount'] - (data['discount'] + data['due_amount'])
-        # Total collection includes direct payments plus credit payments received minus refunds
-        total_collection = net_amount + data['credit_payment_received'] - data['refund_amount']
-        
-        report_list.append({
-            'date': date,
-            'gross_amount': round(data['gross_amount'], 2),
-            'discount': round(data['discount'], 2),
-            'due_amount': round(data['due_amount'], 2),
-            'credit_payment_received': round(data['credit_payment_received'], 2),
-            'refund_amount': round(data['refund_amount'], 2),  # Add refund amount to response
-            'net_amount': round(net_amount, 2),
-            'total_collection': round(total_collection, 2),  # Adjusted for refunds
-            'payment_totals': {key: round(value, 2) for key, value in data['payment_totals'].items()},
-        })
-    
-    client.close()  # Close MongoDB connection
-    return Response({'report': report_list})
 
 
 @api_view(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])
@@ -247,11 +57,7 @@ def get_test_details(request):
     try:
         # Securely encode password
         # MongoDB connection with TLS certificate
-        client = MongoClient(
-            'mongodb://admin:ifS2nTs6vm@103.205.141.208:27017/Lab?authSource=admin',
-            tls=True,
-            tlsAllowInvalidCertificates=True  # <-- bypass certificate verification
-        )
+        client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
         db = client.Lab  # Database name
         collection = db.labbackend_testdetails  # Collection name
         if request.method == 'GET':
@@ -320,11 +126,7 @@ def send_approval_email(request):
             # Connect to MongoDB to verify the test exists
             try:
                 password = quote_plus('Smrft@2024')
-                client = MongoClient(
-                    'mongodb://admin:ifS2nTs6vm@103.205.141.208:27017/Lab?authSource=admin',
-                    tls=True,
-                    tlsAllowInvalidCertificates=True  # <-- bypass certificate verification
-                )
+                client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
                 db = client.Lab
                 collection = db.labbackend_testdetails
                 # Check if test exists and get all test details
@@ -345,9 +147,9 @@ def send_approval_email(request):
             print(f"Generated approval URL: {approval_url}")
             # For local development, override the URL if needed
             if '127.0.0.1' in base_url or 'localhost' in base_url:
-                base_url = 'http://127.0.0.1:8000'
+                base_url = 'http://127.0.0.1:1305'
             else:
-                base_url = 'https://lab.shinovadatabase.in'
+                base_url = 'https://shinova.in'
 
             approval_url = f"{base_url}/approve_test/?test_name={test_name}"
 
@@ -497,11 +299,7 @@ def approve_test(request):
            
             # Connect to MongoDB
             password = quote_plus('Smrft@2024')
-            client = MongoClient(
-                'mongodb://admin:ifS2nTs6vm@103.205.141.208:27017/Lab?authSource=admin',
-                tls=True,
-                tlsAllowInvalidCertificates=True  # <-- bypass certificate verification
-            )
+            client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
             db = client.Lab
             collection = db.labbackend_testdetails
            
@@ -530,12 +328,8 @@ def approve_test(request):
                 return JsonResponse({'error': 'Test name is required'}, status=400)
            
             # Connect to MongoDB
-            password = quote_plus('Smrft@2024')
-            client = MongoClient(
-                'mongodb://admin:ifS2nTs6vm@103.205.141.208:27017/Lab?authSource=admin',
-                tls=True,
-                tlsAllowInvalidCertificates=True  # <-- bypass certificate verification
-            )
+            
+            client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
             db = client.Lab
             collection = db.labbackend_testdetails
            
@@ -1666,8 +1460,7 @@ def patient_test_sorting(request):
         return JsonResponse({'error': str(e)}, status=500)
 
 
-@api_view(['POST'])
-@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
+
 def send_email(request):
     try:
         subject = request.data.get('subject', 'No Subject')

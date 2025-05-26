@@ -106,7 +106,7 @@ import certifi
 DATABASES = {
     'default': {
         'ENGINE': 'djongo',
-        'NAME': os.getenv("LAB_DB_NAME"),
+        'NAME': os.getenv("LAB_DB_NAME","Lab"),
         'ENFORCE_SCHEMA': False,
         'CLIENT': {
             'host': os.getenv("GLOBAL_DB_HOST"),
@@ -162,7 +162,7 @@ EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_USE_SSL = False  # Ensure this is False when using TLS
 EMAIL_HOST_USER = 'resultssmrft@gmail.com'
-EMAIL_HOST_PASSWORD = 'nfkk krtt htoq asge'
-DEFAULT_FROM_EMAIL = 'resultssmrft@gmail.com'
+EMAIL_HOST_PASSWORD = 'nfkk krtt htoq asge'  # Consider using env vars for security
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+
