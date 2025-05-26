@@ -123,7 +123,11 @@ def save_barcodes(request):
 
             # Convert string to date object if needed
             if date:
-                date = datetime.strptime(date, "%d/%m/%Y").date()  # Match format 'DD/MM/YYYY'
+                try:
+                    date = datetime.strptime(date, "%d/%m/%Y %H:%M").date()
+                except ValueError:
+                    date = datetime.strptime(date, "%d/%m/%Y").date()
+
 
             # Save patient details
             BarcodeTestDetails.objects.create(
