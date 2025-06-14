@@ -232,17 +232,46 @@ class LogisticTask(AuditModel):
 
 
 class SampleCollectorLocation(AuditModel):
-    id = models.CharField(primary_key=True,max_length=50)  # Use AutoField for auto-incrementing IDs
+    id = models.CharField(primary_key=True, max_length=50)
     sampleCollector = models.CharField(max_length=255)
     date = models.DateField()
-    latitudeStart = models.CharField(max_length=255)
-    longitudeStart = models.CharField(max_length=255)
-    latitudeEnd = models.CharField(max_length=255)
-    longitudeEnd = models.CharField(max_length=255)
-    distance_travelled = models.CharField(max_length=255)
+    latitudeStart = models.CharField(max_length=255, null=True, blank=True)
+    longitudeStart = models.CharField(max_length=255, null=True, blank=True)
+    latitudeEnd = models.CharField(max_length=255, null=True, blank=True)
+    longitudeEnd = models.CharField(max_length=255, null=True, blank=True)
+    distance_travelled = models.CharField(max_length=255, null=True, blank=True)
+    
+    # Enhanced fields for better tracking
+    startTime = models.DateTimeField(null=True, blank=True)
+    endTime = models.DateTimeField(null=True, blank=True)
+    totalDuration = models.CharField(max_length=100, null=True, blank=True)  # Format: "2h 30m"
+    isActive = models.BooleanField(default=False)  # Track if collector is currently active
+    currentLatitude = models.CharField(max_length=255, null=True, blank=True)  # For live tracking
+    currentLongitude = models.CharField(max_length=255, null=True, blank=True)  # For live tracking
+    lastUpdated = models.DateTimeField(auto_now=True)  # When location was last updated
+    
+    # Route tracking - store intermediate points as JSON
+    routePoints = models.TextField(null=True, blank=True)  # JSON array of lat/lng points
     
     def __str__(self):
         return f"{self.sampleCollector} - {self.date}"
     
     class Meta:
-        unique_together = ('sampleCollector', 'date') 
+        unique_together = ('sampleCollector', 'date')
+        
+    def calculate_duration(self):
+        """Calculate total duration between start and end time"""
+        if self.startTime and self.endTime:
+            duration = self.endTime - self.startTime
+            hours = duration.seconds // 3600
+            minutes = (duration.seconds % 3600) // 60
+            return f"{hours}h {minutes}m"
+        return None
+    
+    def save(self, *args, **kwargs):
+        # Auto-calculate duration when both start and end times are set
+        if self.startTime and self.endTime and not self.totalDuration:
+            self.totalDuration = self.calculate_duration()
+        super().save(*args, **kwargs)
+         
+
