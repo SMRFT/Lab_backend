@@ -176,3 +176,4 @@ EMAIL_HOST_USER = 'resultssmrft@gmail.com'
 EMAIL_HOST_PASSWORD = 'nfkk krtt htoq asge'  # Consider using env vars for security
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
+

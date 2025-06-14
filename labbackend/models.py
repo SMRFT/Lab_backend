@@ -273,3 +273,5 @@ class SampleCollectorLocation(AuditModel):
         if self.startTime and self.endTime and not self.totalDuration:
             self.totalDuration = self.calculate_duration()
         super().save(*args, **kwargs)
+         
+
