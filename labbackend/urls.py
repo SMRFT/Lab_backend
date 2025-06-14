@@ -18,7 +18,7 @@ from labbackend.Views.updatebillingandpatient import update_patient,update_credi
 from labbackend.Views.samplestatus import get_received_samples ,get_sample_collected,update_sample_collected,get_samplepatients_by_date,sample_status,update_sample_status
 from labbackend.Views.logistic import save_logistic_data,get_logistic_data,getlogisticdatabydate,savesamplecollectordetails,update_sample_collector_details,getsalesmapping,logisticdashboard
 from labbackend.Views.refundandcancellation import search_cancellation,verify_and_process_refund,search_refund,verify_and_process_cancellation,generate_otp_cancellation,generate_otp_refund,logs_api,dashboard_data
-from labbackend.Views.clinicalname import clinical_name,get_last_referrer_code,get_clinicalname,ClinicalNameViewSet,preview_mou_file
+from labbackend.Views.clinicalname import clinical_name,get_last_referrer_code,get_clinicalname,ClinicalNameViewSet,preview_mou_file,update_clinicalname
 
 
 urlpatterns = [
@@ -119,5 +119,6 @@ urlpatterns = [
     path('patients-by-date/', patients_by_date),
     path('send_approval_email/', views.send_approval_email, name='send_approval_email'),
     path('approve_test/', views.approve_test, name='approve_test'),
+    path('clinicalname/update/', update_clinicalname, name='approve_test_by_index'),
 
 ]

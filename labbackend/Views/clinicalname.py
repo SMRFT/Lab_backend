@@ -223,3 +223,25 @@ def get_clinicalname(request):
         clinicalname = ClinicalName.objects.all()
         serializer = ClinicalNameSerializer(clinicalname, many=True)
         return Response(serializer.data)
+    
+
+
+@api_view(['PUT'])
+@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
+def update_clinicalname(request):
+    referrer_code = request.data.get('referrerCode')
+
+    if not referrer_code:
+        return Response({"error": "referrerCode is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        instance = ClinicalName.objects.get(referrerCode=referrer_code)
+    except ClinicalName.DoesNotExist:
+        return Response({"error": "Clinical record not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    serializer = ClinicalNameSerializer(instance, data=request.data, partial=True)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
