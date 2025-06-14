@@ -1,557 +1,377 @@
 from rest_framework.response import Response
-from django.http import JsonResponse, HttpResponse
-from django.views.decorators.http import require_http_methods
+from django.http import JsonResponse
+from datetime import datetime, timedelta
 from rest_framework.decorators import api_view
-from rest_framework import  status
+from rest_framework import status
 from django.views.decorators.csrf import csrf_exempt
-from datetime import datetime
-from django.forms.models import model_to_dict
-from django.db.models import Max
-import math
-from django.db.models import Q
-from django.contrib.auth import authenticate, login, logout
-from django.contrib.auth.models import User
-from urllib.parse import quote_plus
-from ..auth.permissions import SkipPermissionsIfDisabled
-from django.contrib.auth.hashers import make_password
-from ..models import SampleCollectorLocation
-import pytz
 import json
-import os
-from django.conf import settings
+import math
+from django.utils import timezone
+from ..models import SampleCollectorLocation
 
-from bson import ObjectId
-from django.utils import timezone 
-from ..serializers import SampleCollectorLocationSerializer
-from pymongo import MongoClient
-#auth
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.permissions import AllowAny
-from pyauth.auth import HasRoleAndDataPermission
+def calculate_distance(lat1, lon1, lat2, lon2):
+    """
+    Calculate the great circle distance between two points 
+    on the earth (specified in decimal degrees)
+    Returns distance in meters
+    """
+    # Convert decimal degrees to radians
+    lat1, lon1, lat2, lon2 = map(math.radians, [float(lat1), float(lon1), float(lat2), float(lon2)])
+    
+    # Haversine formula
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
+    c = 2 * math.asin(math.sqrt(a))
+    
+    # Radius of earth in meters
+    r = 6371000
+    return c * r
 
-from dotenv import load_dotenv
-load_dotenv()
-
-
-TIME_ZONE = 'Asia/Kolkata'
-IST = pytz.timezone(TIME_ZONE)
 @api_view(['GET', 'POST', 'PUT'])
 @csrf_exempt
-@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def sample_collector_location(request):
     """
-    Handle GET, POST, PUT, and PATCH requests for sample collector location
-    GET: Retrieve location data using Django ORM
-    POST: Create new location record using Django ORM (start tracking)
-    PUT: Update existing location record using MongoDB (stop tracking)
-    PATCH: Update location history with new coordinates (live tracking)
+    Enhanced endpoint for sample collector location tracking
+    GET: Retrieve location data
+    POST: Start tracking (save start location)
+    PUT: Update current location or end tracking
     """
+    
     if request.method == 'GET':
         try:
-            # Extract parameters
-            collector_name = request.GET.get('sampleCollector')
-            date_str = request.GET.get('date', datetime.now(IST).strftime('%Y-%m-%d'))
+            date = request.GET.get('date')
+            sample_collector = request.GET.get('sampleCollector')
             
-            if not collector_name:
+            if not date or not sample_collector:
                 return JsonResponse({
                     'success': False,
-                    'message': 'sampleCollector parameter is required'
+                    'message': 'Date and sampleCollector parameters are required'
                 }, status=400)
             
+            # Get location data for the collector on the specified date
             try:
-                # Convert date string to date object
-                date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
-            except ValueError:
-                return JsonResponse({
-                    'success': False,
-                    'message': 'Invalid date format. Use YYYY-MM-DD.'
-                }, status=400)
-            
-            # Connect to MongoDB directly to avoid serialization issues
-            client = None
-            try:
-                password = quote_plus('Smrft@2024')
-                client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
-                db = client.Lab
-                collection = db['labbackend_samplecollectorlocation']
+                location_data = SampleCollectorLocation.objects.get(
+                    sampleCollector=sample_collector,
+                    date=date
+                )
                 
-                # Find document directly in MongoDB
-                start_of_day = datetime.combine(date_obj, datetime.min.time())
-                end_of_day = datetime.combine(date_obj, datetime.max.time())
+                # Parse route points if available
+                route_points = []
+                if location_data.routePoints:
+                    try:
+                        route_points = json.loads(location_data.routePoints)
+                    except json.JSONDecodeError:
+                        route_points = []
                 
-                filter_query = {
-                    'sampleCollector': collector_name,
-                    'date': {'$gte': start_of_day, '$lte': end_of_day}
+                response_data = {
+                    'success': True,
+                    'data': [{
+                        'id': location_data.id,
+                        'sampleCollector': location_data.sampleCollector,
+                        'date': location_data.date,
+                        'latitudeStart': location_data.latitudeStart,
+                        'longitudeStart': location_data.longitudeStart,
+                        'latitudeEnd': location_data.latitudeEnd,
+                        'longitudeEnd': location_data.longitudeEnd,
+                        'currentLatitude': location_data.currentLatitude,
+                        'currentLongitude': location_data.currentLongitude,
+                        'distance_travelled': location_data.distance_travelled,
+                        'startTime': location_data.startTime.isoformat() if location_data.startTime else None,
+                        'endTime': location_data.endTime.isoformat() if location_data.endTime else None,
+                        'totalDuration': location_data.totalDuration,
+                        'isActive': location_data.isActive,
+                        'lastUpdated': location_data.lastUpdated.isoformat(),
+                        'routePoints': route_points
+                    }]
                 }
                 
-                docs = list(collection.find(filter_query))
+                return JsonResponse(response_data)
                 
-                if docs:
-                    location_list = []
-                    for doc in docs:
-                        # Convert MongoDB document to JSON-serializable format
-                        # Convert UTC timestamps to IST for display
-                        start_time_ist = doc.get('startTime').replace(tzinfo=timezone.utc).astimezone(IST).isoformat() if doc.get('startTime') else None
-                        end_time_ist = doc.get('endTime').replace(tzinfo=timezone.utc).astimezone(IST).isoformat() if doc.get('endTime') else None
-                        
-                        # Convert location history timestamps to IST
-                        location_history = doc.get('location_history', [])
-                        for point in location_history:
-                            if 'timestamp' in point:
-                                try:
-                                    # Parse the timestamp and convert to IST
-                                    ts = datetime.fromisoformat(point['timestamp'].replace('Z', '+00:00'))
-                                    point['timestamp'] = ts.replace(tzinfo=timezone.utc).astimezone(IST).isoformat()
-                                except (ValueError, AttributeError):
-                                    # If timestamp format is unusual, keep the original
-                                    pass
-                        
-                        location_data = {
-                            'id': str(doc['_id']),
-                            'sampleCollector': doc['sampleCollector'],
-                            'date': doc['date'].replace(tzinfo=timezone.utc).astimezone(IST).strftime('%Y-%m-%d'),
-                            'latitudeStart': doc.get('latitudeStart', ''),
-                            'longitudeStart': doc.get('longitudeStart', ''),
-                            'startTime': start_time_ist,
-                            'latitudeEnd': doc.get('latitudeEnd', ''),
-                            'longitudeEnd': doc.get('longitudeEnd', ''),
-                            'endTime': end_time_ist,
-                            'distance_travelled': doc.get('distance_travelled', '0.0'),
-                            'location_history': location_history
-                        }
-                        location_list.append(location_data)
-                    
-                    return JsonResponse({
-                        'success': True,
-                        'data': location_list
-                    })
-                else:
-                    return JsonResponse({
-                        'success': False,
-                        'message': f'No location data found for collector {collector_name} on {date_str}'
-                    }, status=404)
-            finally:
-                if client:
-                    client.close()
+            except SampleCollectorLocation.DoesNotExist:
+                return JsonResponse({
+                    'success': False,
+                    'message': 'No location data found for the specified collector and date'
+                })
                 
         except Exception as e:
-            import traceback
-            traceback.print_exc()
             return JsonResponse({
                 'success': False,
                 'message': f'Error retrieving location data: {str(e)}'
             }, status=500)
-            
+    
     elif request.method == 'POST':
-        # Create a new record (start tracking) using Django ORM
+        # Start tracking - save initial location
         try:
-            data = json.loads(request.body)
-            
-            # Extract data from request
+            data = json.loads(request.body.decode('utf-8'))
             sample_collector = data.get('sampleCollector')
-            date_str = data.get('date')
+            date = data.get('date')
             latitude_start = data.get('latitudeStart')
             longitude_start = data.get('longitudeStart')
             
-            # Debug incoming data
-            print(f"Received POST data: {data}")
-            
-            if not all([sample_collector, date_str, latitude_start is not None, longitude_start is not None]):
+            if not all([sample_collector, date, latitude_start, longitude_start]):
                 return JsonResponse({
                     'success': False,
-                    'message': 'Missing required fields: sampleCollector, date, latitudeStart, longitudeStart'
+                    'message': 'sampleCollector, date, latitudeStart, and longitudeStart are required'
                 }, status=400)
             
-            # Convert date string to date object
-            date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+            # Create or update location record
+            location_id = f"{sample_collector}_{date}"
             
-            # Use current time in IST
-            current_time = datetime.now(IST)
+            location_data, created = SampleCollectorLocation.objects.get_or_create(
+                id=location_id,
+                defaults={
+                    'sampleCollector': sample_collector,
+                    'date': datetime.strptime(date, '%Y-%m-%d').date(),
+                    'latitudeStart': str(latitude_start),
+                    'longitudeStart': str(longitude_start),
+                    'currentLatitude': str(latitude_start),
+                    'currentLongitude': str(longitude_start),
+                    'startTime': timezone.now(),
+                    'isActive': True,
+                    'routePoints': json.dumps([{'lat': latitude_start, 'lng': longitude_start, 'timestamp': timezone.now().isoformat()}])
+                }
+            )
             
-            # Check if record already exists using Django ORM
-            existing_location = SampleCollectorLocation.objects.filter(
-                sampleCollector=sample_collector,
-                date=date_obj
-            ).first()
+            if not created:
+                # Update existing record if restarting
+                location_data.latitudeStart = str(latitude_start)
+                location_data.longitudeStart = str(longitude_start)
+                location_data.currentLatitude = str(latitude_start)
+                location_data.currentLongitude = str(longitude_start)
+                location_data.startTime = timezone.now()
+                location_data.isActive = True
+                location_data.endTime = None
+                location_data.latitudeEnd = None
+                location_data.longitudeEnd = None
+                location_data.distance_travelled = None
+                location_data.totalDuration = None
+                location_data.routePoints = json.dumps([{'lat': latitude_start, 'lng': longitude_start, 'timestamp': timezone.now().isoformat()}])
+                location_data.save()
             
-            if existing_location:
-                # Update existing record
-                existing_location.latitudeStart = str(latitude_start)
-                existing_location.longitudeStart = str(longitude_start)
-                existing_location.startTime = current_time
-                
-                # Initialize or reset location history with start point
-                initial_history = [{
-                    'timestamp': current_time.isoformat(),
-                    'latitude': str(latitude_start),
-                    'longitude': str(longitude_start)
-                }]
-                existing_location.location_history = initial_history
-                
-                existing_location.save()
-                
-                serializer = SampleCollectorLocationSerializer(existing_location)
-                return JsonResponse({
-                    'success': True,
-                    'message': 'Location record updated successfully',
-                    'data': serializer.data
-                })
-            else:
-                # Create new record with location history
-                initial_history = [{
-                    'timestamp': current_time.isoformat(),
-                    'latitude': str(latitude_start),
-                    'longitude': str(longitude_start)
-                }]
-                
-                new_location = SampleCollectorLocation.objects.create(
-                    sampleCollector=sample_collector,
-                    date=date_obj,
-                    latitudeStart=str(latitude_start),
-                    longitudeStart=str(longitude_start),
-                    startTime=current_time,
-                    latitudeEnd="",
-                    longitudeEnd="", 
-                    endTime=None,
-                    distance_travelled="",
-                    location_history=initial_history
-                )
-
-                serializer = SampleCollectorLocationSerializer(new_location)
-                return JsonResponse({
-                    'success': True,
-                    'message': 'New location record created successfully',
-                    'data': serializer.data
-                })
+            return JsonResponse({
+                'success': True,
+                'message': 'Location tracking started successfully',
+                'data': {
+                    'id': location_data.id,
+                    'startTime': location_data.startTime.isoformat(),
+                    'isActive': location_data.isActive
+                }
+            })
             
         except Exception as e:
-            import traceback
-            traceback.print_exc()
             return JsonResponse({
                 'success': False,
-                'message': f'Error saving start location data: {str(e)}'
-            }, status=400)
-            
+                'message': f'Error starting location tracking: {str(e)}'
+            }, status=500)
+    
     elif request.method == 'PUT':
-        # Update an existing record (stop tracking) using MongoDB directly
+        # Update current location or end tracking
         try:
-            data = json.loads(request.body)
-            
-            # Extract data from request
+            data = json.loads(request.body.decode('utf-8'))
             sample_collector = data.get('sampleCollector')
-            date_str = data.get('date')
+            date = data.get('date')
+            
+            if not sample_collector or not date:
+                return JsonResponse({
+                    'success': False,
+                    'message': 'sampleCollector and date are required'
+                }, status=400)
+            
+            # Get existing location record
+            try:
+                location_data = SampleCollectorLocation.objects.get(
+                    sampleCollector=sample_collector,
+                    date=date
+                )
+            except SampleCollectorLocation.DoesNotExist:
+                return JsonResponse({
+                    'success': False,
+                    'message': 'No active tracking session found for this collector and date'
+                }, status=404)
+            
+            # Check if this is an end tracking request
             latitude_end = data.get('latitudeEnd')
             longitude_end = data.get('longitudeEnd')
             
-            # Debug incoming data
-            print(f"Received PUT data: {data}")
-            
-            if not all([sample_collector, date_str, latitude_end is not None, longitude_end is not None]):
-                return JsonResponse({
-                    'success': False,
-                    'message': 'Missing required fields: sampleCollector, date, latitudeEnd, longitudeEnd'
-                }, status=400)
-            
-            # Convert date string to date object
-            date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
-            
-            # Use current time in IST
-            current_time = datetime.now(IST)
-            
-            # Connect to MongoDB
-            client = None
-            try:
-                password = quote_plus('Smrft@2024')
-                client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
-                db = client.Lab
-                collection = db['labbackend_samplecollectorlocation']
+            if latitude_end and longitude_end:
+                # End tracking
+                location_data.latitudeEnd = str(latitude_end)
+                location_data.longitudeEnd = str(longitude_end)
+                location_data.currentLatitude = str(latitude_end)
+                location_data.currentLongitude = str(longitude_end)
+                location_data.endTime = timezone.now()
+                location_data.isActive = False
                 
-                # Find document directly in MongoDB using sample collector and date
-                # Convert date to ISODate format for MongoDB query
-                start_of_day = datetime.combine(date_obj, datetime.min.time())
-                end_of_day = datetime.combine(date_obj, datetime.max.time())
-                
-                filter_query = {
-                    'sampleCollector': sample_collector,
-                    'date': {'$gte': start_of_day, '$lte': end_of_day}
-                }
-                
-                # Get existing document to calculate distance
-                existing_doc = collection.find_one(filter_query)
-                
-                if existing_doc:
-                    print(f"Found existing doc: {existing_doc}")
+                # Calculate total distance if we have start and end points
+                if location_data.latitudeStart and location_data.longitudeStart:
+                    # Parse route points to calculate total distance
+                    total_distance = 0
+                    route_points = []
                     
-                    # Add the end location to location_history
-                    location_history = existing_doc.get('location_history', [])
-                    if not isinstance(location_history, list):
-                        location_history = []
+                    if location_data.routePoints:
+                        try:
+                            route_points = json.loads(location_data.routePoints)
+                        except json.JSONDecodeError:
+                            route_points = []
                     
-                    location_history.append({
-                        'timestamp': current_time.isoformat(),
-                        'latitude': str(latitude_end),
-                        'longitude': str(longitude_end)
+                    # Add end point to route
+                    route_points.append({
+                        'lat': latitude_end,
+                        'lng': longitude_end,
+                        'timestamp': timezone.now().isoformat()
                     })
                     
-                    # Calculate distance if start coordinates are available
-                    distance_travelled = "0.0"
-                    if 'latitudeStart' in existing_doc and 'longitudeStart' in existing_doc:
-                        try:
-                            # Calculate total distance through all points in location_history
-                            total_distance = 0
-                            for i in range(1, len(location_history)):
-                                prev_point = location_history[i-1]
-                                curr_point = location_history[i]
-                                
-                                try:
-                                    lat1 = float(prev_point['latitude'])
-                                    lon1 = float(prev_point['longitude'])
-                                    lat2 = float(curr_point['latitude'])
-                                    lon2 = float(curr_point['longitude'])
-                                    
-                                    segment_distance = calculate_distance(lat1, lon1, lat2, lon2)
-                                    total_distance += segment_distance
-                                except (ValueError, TypeError, KeyError) as e:
-                                    print(f"Error calculating segment distance: {e}")
-                            
-                            # Round and convert to string
-                            distance_travelled = str(round(total_distance / 1000, 2))  # Convert to km
-                            print(f"Calculated total distance: {distance_travelled} km")
-                        except (ValueError, TypeError) as e:
-                            print(f"Error calculating distance: {e}")
+                    # Calculate distance between consecutive points
+                    for i in range(1, len(route_points)):
+                        prev_point = route_points[i-1]
+                        curr_point = route_points[i]
+                        distance = calculate_distance(
+                            prev_point['lat'], prev_point['lng'],
+                            curr_point['lat'], curr_point['lng']
+                        )
+                        total_distance += distance
                     
-                    # Update the document
-                    update_data = {
-                        '$set': {
-                            'latitudeEnd': str(latitude_end),
-                            'longitudeEnd': str(longitude_end),
-                            'endTime': current_time.replace(tzinfo=None),  # Remove timezone for MongoDB
-                            'distance_travelled': distance_travelled,
-                            'location_history': location_history
-                        }
+                    location_data.distance_travelled = f"{total_distance:.2f}"
+                    location_data.routePoints = json.dumps(route_points)
+                
+                # Calculate duration
+                if location_data.startTime:
+                    location_data.totalDuration = location_data.calculate_duration()
+                
+                location_data.save()
+                
+                return JsonResponse({
+                    'success': True,
+                    'message': 'Location tracking ended successfully',
+                    'data': {
+                        'distance_travelled': location_data.distance_travelled,
+                        'totalDuration': location_data.totalDuration,
+                        'endTime': location_data.endTime.isoformat()
                     }
-                    
-                    # Perform the update operation
-                    result = collection.update_one({'_id': existing_doc['_id']}, update_data)
-                    
-                    if result.modified_count > 0 or result.matched_count > 0:
-                        # Get the updated document
-                        updated_doc = collection.find_one({'_id': existing_doc['_id']})
-                        
-                        # Convert timestamps to IST for response
-                        start_time_ist = updated_doc.get('startTime').replace(tzinfo=timezone.utc).astimezone(IST).isoformat() if updated_doc.get('startTime') else None
-                        end_time_ist = updated_doc.get('endTime').replace(tzinfo=timezone.utc).astimezone(IST).isoformat() if updated_doc.get('endTime') else None
-                        
-                        return JsonResponse({
-                            'success': True,
-                            'message': 'End location data updated successfully',
-                            'data': {
-                                'id': str(updated_doc['_id']),
-                                'sampleCollector': updated_doc['sampleCollector'],
-                                'date': updated_doc['date'].replace(tzinfo=timezone.utc).astimezone(IST).strftime('%Y-%m-%d'),
-                                'latitudeStart': updated_doc.get('latitudeStart', ''),
-                                'longitudeStart': updated_doc.get('longitudeStart', ''),
-                                'startTime': start_time_ist,
-                                'latitudeEnd': updated_doc.get('latitudeEnd', ''),
-                                'longitudeEnd': updated_doc.get('longitudeEnd', ''),
-                                'endTime': end_time_ist,
-                                'distance_travelled': updated_doc.get('distance_travelled', ''),
-                                'location_history': updated_doc.get('location_history', [])
-                            }
-                        })
-                    else:
-                        return JsonResponse({
-                            'success': False,
-                            'message': 'Document found but not updated. No changes made.'
-                        }, status=400)
+                })
+            
+            else:
+                # Update current location (live tracking)
+                current_lat = data.get('currentLatitude')
+                current_lng = data.get('currentLongitude')
                 
-                else:
-                    # Alternative approach: Try to find by ObjectId if we have the ID
-                    if '_id' in data and data['_id']:
+                if current_lat and current_lng:
+                    location_data.currentLatitude = str(current_lat)
+                    location_data.currentLongitude = str(current_lng)
+                    
+                    # Add point to route
+                    route_points = []
+                    if location_data.routePoints:
                         try:
-                            object_id = ObjectId(data['_id'])
-                            existing_doc = collection.find_one({'_id': object_id})
-                            if existing_doc:
-                                # Similar logic as above for updating the document
-                                # (Code would be duplicated here)
-                                pass
-                        except Exception as e:
-                            print(f"Error finding document by ObjectId: {e}")
+                            route_points = json.loads(location_data.routePoints)
+                        except json.JSONDecodeError:
+                            route_points = []
                     
-                    # If we still haven't found the document, return an error
+                    # Add new point if it's significantly different from the last point
+                    if not route_points or calculate_distance(
+                        route_points[-1]['lat'], route_points[-1]['lng'],
+                        current_lat, current_lng
+                    ) > 10:  # Only add if moved more than 10 meters
+                        route_points.append({
+                            'lat': current_lat,
+                            'lng': current_lng,
+                            'timestamp': timezone.now().isoformat()
+                        })
+                        location_data.routePoints = json.dumps(route_points)
+                    
+                    location_data.save()
+                    
                     return JsonResponse({
-                        'success': False,
-                        'message': f'No location record found for {sample_collector} on {date_str}. Start tracking first.'
-                    }, status=404)
-            finally:
-                if client:
-                    client.close()
+                        'success': True,
+                        'message': 'Current location updated successfully'
+                    })
                 
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            return JsonResponse({
-                'success': False,
-                'message': f'Error updating end location data: {str(e)}'
-            }, status=400)
-    
-    elif request.method == 'PATCH':
-        # Update location history with new coordinates (for live tracking)
-        try:
-            data = json.loads(request.body)
-            
-            # Extract data from request
-            sample_collector = data.get('sampleCollector')
-            date_str = data.get('date')
-            latitude = data.get('latitude')
-            longitude = data.get('longitude')
-            
-            if not all([sample_collector, date_str, latitude is not None, longitude is not None]):
                 return JsonResponse({
                     'success': False,
-                    'message': 'Missing required fields: sampleCollector, date, latitude, longitude'
+                    'message': 'No valid location data provided for update'
                 }, status=400)
-            
-            # Convert date string to date object
-            date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
-            
-            # Use current time in IST
-            current_time = datetime.now(IST)
-            
-            # Connect to MongoDB
-            client = None
-            try:
-                password = quote_plus('Smrft@2024')
-                client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
-                db = client.Lab
-                collection = db['labbackend_samplecollectorlocation']
                 
-                # Find document directly in MongoDB
-                start_of_day = datetime.combine(date_obj, datetime.min.time())
-                end_of_day = datetime.combine(date_obj, datetime.max.time())
-                
-                filter_query = {
-                    'sampleCollector': sample_collector,
-                    'date': {'$gte': start_of_day, '$lte': end_of_day}
-                }
-                
-                existing_doc = collection.find_one(filter_query)
-                
-                if existing_doc:
-                    # Add the new location to location_history
-                    location_history = existing_doc.get('location_history', [])
-                    if not isinstance(location_history, list):
-                        location_history = []
-                    
-                    # Add new point with IST timestamp
-                    new_point = {
-                        'timestamp': current_time.isoformat(),
-                        'latitude': str(latitude),
-                        'longitude': str(longitude)
-                    }
-                    location_history.append(new_point)
-                    
-                    # Calculate running distance
-                    distance_travelled = "0.0"
-                    if len(location_history) > 1:
-                        try:
-                            # Calculate total distance through all points in location_history
-                            total_distance = 0
-                            for i in range(1, len(location_history)):
-                                prev_point = location_history[i-1]
-                                curr_point = location_history[i]
-                                
-                                try:
-                                    lat1 = float(prev_point['latitude'])
-                                    lon1 = float(prev_point['longitude'])
-                                    lat2 = float(curr_point['latitude'])
-                                    lon2 = float(curr_point['longitude'])
-                                    
-                                    segment_distance = calculate_distance(lat1, lon1, lat2, lon2)
-                                    total_distance += segment_distance
-                                except (ValueError, TypeError, KeyError) as e:
-                                    print(f"Error calculating segment distance: {e}")
-                            
-                            # Round and convert to string (km)
-                            distance_travelled = str(round(total_distance / 1000, 2))
-                        except Exception as e:
-                            print(f"Error calculating total distance: {e}")
-                    
-                    # Update the document
-                    update_data = {
-                        '$set': {
-                            'location_history': location_history,
-                            'distance_travelled': distance_travelled
-                        }
-                    }
-                    
-                    result = collection.update_one({'_id': existing_doc['_id']}, update_data)
-                    
-                    if result.modified_count > 0 or result.matched_count > 0:
-                        # Get the updated document
-                        updated_doc = collection.find_one({'_id': existing_doc['_id']})
-                        
-                        return JsonResponse({
-                            'success': True,
-                            'message': 'Location history updated successfully',
-                            'data': {
-                                'id': str(updated_doc['_id']),
-                                'sampleCollector': updated_doc['sampleCollector'],
-                                'currentLocation': new_point,
-                                'distance_travelled': updated_doc.get('distance_travelled', ''),
-                                'location_history': updated_doc.get('location_history', [])
-                            }
-                        })
-                    else:
-                        return JsonResponse({
-                            'success': False,
-                            'message': 'Document found but not updated. No changes made.'
-                        }, status=400)
-                else:
-                    return JsonResponse({
-                        'success': False,
-                        'message': f'No active tracking session found for {sample_collector} on {date_str}. Start tracking first.'
-                    }, status=404)
-            finally:
-                if client:
-                    client.close()
-                    
         except Exception as e:
-            import traceback
-            traceback.print_exc()
             return JsonResponse({
                 'success': False,
-                'message': f'Error updating location history: {str(e)}'
-            }, status=400)
-    
-    else:
+                'message': f'Error updating location: {str(e)}'
+            }, status=500)
+
+@api_view(['GET'])
+def get_active_collectors(request):
+    """Get all currently active collectors for live tracking"""
+    try:
+        today = datetime.now().date()
+        active_collectors = SampleCollectorLocation.objects.filter(
+            date=today,
+            isActive=True
+        ).values(
+            'sampleCollector',
+            'currentLatitude',
+            'currentLongitude',
+            'startTime',
+            'lastUpdated',
+            'distance_travelled'
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'data': list(active_collectors)
+        })
+        
+    except Exception as e:
         return JsonResponse({
             'success': False,
-            'message': 'Method not allowed'
-        }, status=405)
+            'message': f'Error retrieving active collectors: {str(e)}'
+        }, status=500)
 
-def calculate_distance(lat1, lon1, lat2, lon2):
-    """
-    Calculate the distance between two points on Earth using the Haversine formula
-    Returns distance in meters
-    """
-    # Earth's radius in meters
-    R = 6371000
-    
-    # Convert latitude and longitude from degrees to radians
-    lat1_rad = math.radians(lat1)
-    lon1_rad = math.radians(lon1)
-    lat2_rad = math.radians(lat2)
-    lon2_rad = math.radians(lon2)
-    
-    # Differences
-    dlat = lat2_rad - lat1_rad
-    dlon = lon2_rad - lon1_rad
-    
-    # Haversine formula
-    a = math.sin(dlat/2)**2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon/2)**2
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
-    distance = R * c
-    
-    return round(distance, 2)  # Round to 2 decimal places
+@api_view(['GET'])
+def get_collector_route(request):
+    """Get the complete route for a collector on a specific date"""
+    try:
+        sample_collector = request.GET.get('sampleCollector')
+        date = request.GET.get('date')
+        
+        if not sample_collector or not date:
+            return JsonResponse({
+                'success': False,
+                'message': 'sampleCollector and date parameters are required'
+            }, status=400)
+        
+        try:
+            location_data = SampleCollectorLocation.objects.get(
+                sampleCollector=sample_collector,
+                date=date
+            )
+            
+            route_points = []
+            if location_data.routePoints:
+                try:
+                    route_points = json.loads(location_data.routePoints)
+                except json.JSONDecodeError:
+                    route_points = []
+            
+            return JsonResponse({
+                'success': True,
+                'data': {
+                    'sampleCollector': location_data.sampleCollector,
+                    'date': location_data.date,
+                    'routePoints': route_points,
+                    'distance_travelled': location_data.distance_travelled,
+                    'totalDuration': location_data.totalDuration,
+                    'isActive': location_data.isActive
+                }
+            })
+            
+        except SampleCollectorLocation.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'No route data found for the specified collector and date'
+            })
+            
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'message': f'Error retrieving route data: {str(e)}'
+        }, status=500)
