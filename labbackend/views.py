@@ -149,7 +149,7 @@ def send_approval_email(request):
             if '127.0.0.1' in base_url or 'localhost' in base_url:
                 base_url = 'http://127.0.0.1:1305'
             else:
-                base_url = 'https://shinova.in'
+                base_url = 'https://shinova.in1.cloudlets.co.in/'
 
             approval_url = f"{base_url}/approve_test/?test_name={test_name}"
 
