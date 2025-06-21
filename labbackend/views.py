@@ -57,7 +57,7 @@ def get_test_details(request):
     try:
         # Securely encode password
         # MongoDB connection with TLS certificate
-        client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
+        client = MongoClient(os.getenv('LAB_DB_HOST'))
         db = client.Lab  # Database name
         collection = db.labbackend_testdetails  # Collection name
         if request.method == 'GET':
@@ -126,7 +126,7 @@ def send_approval_email(request):
             # Connect to MongoDB to verify the test exists
             try:
                 password = quote_plus('Smrft@2024')
-                client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
+                client = MongoClient(os.getenv('LAB_DB_HOST'))
                 db = client.Lab
                 collection = db.labbackend_testdetails
                 # Check if test exists and get all test details
@@ -299,7 +299,7 @@ def approve_test(request):
            
             # Connect to MongoDB
             password = quote_plus('Smrft@2024')
-            client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
+            client = MongoClient(os.getenv('LAB_DB_HOST'))
             db = client.Lab
             collection = db.labbackend_testdetails
            
@@ -329,7 +329,7 @@ def approve_test(request):
            
             # Connect to MongoDB
             
-            client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
+            client = MongoClient(os.getenv('LAB_DB_HOST'))
             db = client.Lab
             collection = db.labbackend_testdetails
            
@@ -409,7 +409,7 @@ def handle_patch_request(request):
         # MongoDB connection setup inside the function
         password = quote_plus('Smrft@2024')
         # MongoDB connection with TLS certificate
-        client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
+        client = MongoClient(os.getenv('LAB_DB_HOST'))
         db = client.Lab  # Database name
         collection = db.labbackend_testdetails  # Collection name
         data = json.loads(request.body.decode('utf-8'))
@@ -657,7 +657,7 @@ def save_test_value(request):
             return Response({"error": "An error occurred"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     elif request.method == 'PATCH':
         # MongoDB connection with TLS certificate
-        client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
+        client = MongoClient(os.getenv('LAB_DB_HOST'))
         db = client.Lab  # Database name
         collection = db.labbackend_testvalue
         # Extract parameters from the request
@@ -722,7 +722,7 @@ def update_test_value(request):
     # MongoDB connection
     #password = quote_plus('Smrft@2024')
     # MongoDB connection with TLS certificate
-    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
+    client = MongoClient(os.getenv('LAB_DB_HOST'))
     db = client.Lab  # Database name
     collection = db.labbackend_testvalue
     try:
@@ -783,7 +783,7 @@ def update_dispatch_status(request, patient_id):
     password = quote_plus('Smrft@2024')
 
     # MongoDB connection with TLS certificate
-    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
+    client = MongoClient(os.getenv('LAB_DB_HOST'))
 
     db = client.Lab  # Database name
     collection = db.labbackend_testvalue
@@ -917,7 +917,7 @@ def approve_test_detail(request, patient_id, test_index):
     # MongoDB connection
     password = quote_plus('Smrft@2024')
     # MongoDB connection with TLS certificate
-    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
+    client = MongoClient(os.getenv('LAB_DB_HOST'))
     db = client.Lab  # Database name
     collection = db.labbackend_testvalue  # Your collection name
     # Log the incoming request body
@@ -971,7 +971,7 @@ def rerun_test_detail(request, patient_id, test_index):
     # MongoDB connection
     password = quote_plus('Smrft@2024')
         # MongoDB connection with TLS certificate
-    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
+    client = MongoClient(os.getenv('LAB_DB_HOST'))
     db = client.Lab  # Database name
     collection = db.labbackend_testvalue  # Your collection name
     """Rerun the test detail at the given index for the specified patient."""
@@ -1019,7 +1019,7 @@ def update_test_detail(request, patient_id):
     password = quote_plus('Smrft@2024')
 
         # MongoDB connection with TLS certificate
-    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
+    client = MongoClient(os.getenv('LAB_DB_HOST'))
 
     db = client.Lab  # Database name
     collection = db.labbackend_testvalue  # Your collection name
@@ -1231,7 +1231,7 @@ from .models import SampleStatus, TestValue
 def overall_report(request):
     try:
         # MongoDB setup
-        client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
+        client = MongoClient(os.getenv('LAB_DB_HOST'))
         db = client.Lab
         patients_collection = db["labbackend_patient"]
 

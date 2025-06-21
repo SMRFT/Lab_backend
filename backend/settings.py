@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/3.2/ref/settings/
 from pathlib import Path
 import os
 from dotenv import load_dotenv
+import rest_framework
 
 load_dotenv()
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -103,7 +104,7 @@ DATABASES = {
         'NAME': os.getenv("LAB_DB_NAME"),
         'ENFORCE_SCHEMA': False,
         'CLIENT': {
-            'host': os.getenv("GLOBAL_DB_HOST"),
+            'host': os.getenv("LAB_DB_HOST"),
 
         }
     }

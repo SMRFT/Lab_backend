@@ -30,31 +30,81 @@ def get_samplepatients_by_date(request):
     date = request.GET.get('date')
     if not date:
         return JsonResponse({'error': 'Date parameter is required.'}, status=400)
+    
     try:
         # Parse the input date with time (timezone-aware or naive)
         parsed_date = datetime.fromisoformat(date)
+        
         # Get all patient IDs in SampleStatus with the given exact date and test details
-        sample_status_ids = SampleStatus.objects.filter(date__gte=parsed_date, date__lt=parsed_date + timedelta(days=1)).values_list('patient_id', 'testdetails')
-        # Prepare a set of patient_id-test combinations in SampleStatus
-        existing_samples = set()
-        for patient_id, testdetails in sample_status_ids:
+        sample_status_records = SampleStatus.objects.filter(
+            date__gte=parsed_date, 
+            date__lt=parsed_date + timedelta(days=1)
+        ).values_list('patient_id', 'testdetails')
+        
+        # Prepare sets for different sample statuses
+        completed_samples = set()  # Tests that are completed/processed
+        pending_samples = set()    # Tests that are pending
+        
+        for patient_id, testdetails in sample_status_records:
+            # Parse testdetails if it's a JSON string
+            if isinstance(testdetails, str):
+                try:
+                    testdetails = json.loads(testdetails)
+                except json.JSONDecodeError:
+                    continue
+            
             for test in testdetails:
-                existing_samples.add((patient_id, test['testname']))
-        # Filter patients that are not in SampleStatus
-        patients = BarcodeTestDetails.objects.filter(date__gte=parsed_date, date__lt=parsed_date + timedelta(days=1)).exclude(
-            patient_id__in=[item[0] for item in existing_samples]
+                test_key = (patient_id, test['testname'])
+                if test.get('samplestatus') == 'Pending':
+                    pending_samples.add(test_key)
+                else:
+                    # Consider any other status as completed/processed
+                    completed_samples.add(test_key)
+        
+        # Get all patients from BarcodeTestDetails for the given date
+        patients = BarcodeTestDetails.objects.filter(
+            date__gte=parsed_date, 
+            date__lt=parsed_date + timedelta(days=1)
         )
-        # Check if test names overlap for each patient
+        
+        # Filter patients based on the new logic
         filtered_patients = []
         for patient in patients:
-            patient_tests = {test['testname'] for test in patient.tests}
-            if not any((patient.patient_id, test) in existing_samples for test in patient_tests):
+            # Parse patient tests if it's a JSON string
+            patient_tests = patient.tests
+            if isinstance(patient_tests, str):
+                try:
+                    patient_tests = json.loads(patient_tests)
+                except json.JSONDecodeError:
+                    continue
+            
+            patient_test_names = {test['testname'] for test in patient_tests}
+            
+            # Check if patient should be included
+            should_include = False
+            
+            for test_name in patient_test_names:
+                test_key = (patient.patient_id, test_name)
+                
+                # Include if:
+                # 1. Test doesn't exist in SampleStatus at all, OR
+                # 2. Test exists in SampleStatus but has Pending status
+                if (test_key not in completed_samples and test_key not in pending_samples) or \
+                   (test_key in pending_samples):
+                    should_include = True
+                    break
+            
+            if should_include:
                 filtered_patients.append(patient)
+        
         # Serialize the filtered patients
         patient_data = [model_to_dict(patient) for patient in filtered_patients]
         return JsonResponse({'data': patient_data}, safe=False)
+        
     except ValueError:
         return JsonResponse({'error': 'Invalid date format. Use YYYY-MM-DDTHH:MM:SS.'}, status=400)
+    except Exception as e:
+        return JsonResponse({'error': f'An error occurred: {str(e)}'}, status=500)
 
 @api_view(['POST'])
 @csrf_exempt
@@ -106,7 +156,7 @@ def sample_status(request):
 def update_sample_status(request, patient_id):
     password = quote_plus('Smrft@2024')
     # MongoDB connection with TLS certificate
-    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
+    client = MongoClient(os.getenv('LAB_DB_HOST'))
     db = client.Lab  # Database name
     collection = db.labbackend_samplestatus
     if request.method == 'PUT':
@@ -211,7 +261,7 @@ def update_sample_collected(request, patient_id):
     # MongoDB connection setup
     #password = quote_plus('Smrft@2024')
     # MongoDB connection with TLS certificate
-    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
+    client = MongoClient(os.getenv('LAB_DB_HOST'))
     db = client.Lab  # Database name
     collection = db.labbackend_samplestatus  # Collection name
     if request.method == "PUT":
