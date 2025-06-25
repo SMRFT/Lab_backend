@@ -1092,6 +1092,7 @@ def get_patient_test_details(request):
             "gender": patient.gender if patient else "N/A",
             "refby": patient.refby if patient else "N/A",
             "B2B": patient.B2B,
+            "branch": patient.branch,
             "verified_by": test_values[0].verified_by,
         }
         for test in test_values[0].testdetails:
@@ -1404,6 +1405,7 @@ def overall_report(request):
                 "age": age,
                 "segment": patient.get("segment", "N/A"),
                 "b2b": patient.get("B2B", "N/A"),
+                "branch": patient.get("branch", "N/A"),
                 "sample_collector": patient.get("sample_collector", "N/A"),
                 "salesMapping": patient.get("salesMapping", "N/A"),
                 "total_amount": total_amount,
