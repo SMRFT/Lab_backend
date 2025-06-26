@@ -101,15 +101,13 @@ import certifi
 DATABASES = {
     'default': {
         'ENGINE': 'djongo',
-        'NAME': os.getenv("LAB_DB_NAME"),
+        'NAME': os.getenv("LAB_DB_NAME","Lab"),
         'ENFORCE_SCHEMA': False,
         'CLIENT': {
             'host': os.getenv("LAB_DB_HOST"),
-
         }
     }
 }
-
 
 # DATABASES = {
 #     'default': {

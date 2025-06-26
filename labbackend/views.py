@@ -440,14 +440,10 @@ def get_test_parameters(request, test_name):
         #password = quote_plus('Smrft@2024')
 
         # MongoDB connection with TLS certificate
-        client = MongoClient(
-            'mongodb://admin:ifS2nTs6vm@103.205.141.208:27017/Lab?authSource=admin',
-            tls=True,
-            tlsAllowInvalidCertificates=True  # <-- bypass certificate verification
-        )
-
+        client = MongoClient(os.getenv('LAB_DB_HOST'))
         db = client.Lab  # Database name
         collection = db.labbackend_testdetails
+
         # Fetch the test details based on the test_name
         test = collection.find_one({"test_name": test_name}, {"_id": 0, "parameters": 1})  # Assuming parameters is a field in your document
         if test:
@@ -467,13 +463,9 @@ def compare_test_details(request):
     # MongoDB connection setup
     #password = quote_plus('Smrft@2024')
         # MongoDB connection with TLS certificate
-    client = MongoClient(
-            'mongodb://admin:ifS2nTs6vm@103.205.141.208:27017/Lab?authSource=admin',
-            tls=True,
-            tlsAllowInvalidCertificates=True  # <-- bypass certificate verification
-        )
+    client = MongoClient(os.getenv('LAB_DB_HOST'))
     db = client.Lab  # Database name
-    collection = db.labbackend_testdetails  # Collection name
+    collection = db.labbackend_testdetails
     # Retrieve the date and patient ID from the request
     date = request.GET.get('date')
     patient_id = request.GET.get('patient_id')
