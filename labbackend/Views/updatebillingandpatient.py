@@ -22,39 +22,48 @@ from pyauth.auth import HasRoleAndDataPermission
 from dotenv import load_dotenv
 
 load_dotenv()
-
-
-client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
-db = client["Lab"]
-collection = db["labbackend_patient"]
-
 @api_view(['PUT'])
 @csrf_exempt
 @permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def update_patient(request, patient_id):
+    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
+    db = client["Lab"]
+    collection = db["labbackend_patient"]
+    
     if request.method == "PUT":
         try:
             data = json.loads(request.body)
-            # Ensure valid fields are updated
+            
+            # Include all fields, even empty strings (only exclude None values)
             update_data = {
-                key: value for key, value in data.items() if value != "" and value is not None
+                key: value for key, value in data.items() if value is not None
             }
+            
             # Convert date string to datetime object if it exists
             if "date" in update_data:
                 try:
                     update_data["date"] = datetime.fromisoformat(update_data["date"])
                 except ValueError:
                     return JsonResponse({"error": "Invalid date format"}, status=400)
+            
+            # Always update lastmodified fields to ensure some change occurs
+            update_data["lastmodified_by"] = "system"  # or get from request
+            update_data["lastmodified_date"] = datetime.now()
+            
             result = collection.update_one({"patient_id": patient_id}, {"$set": update_data})
+            
+            if result.matched_count == 0:
+                return JsonResponse({"error": "Patient not found"}, status=404)
+            
             if result.modified_count > 0:
                 return JsonResponse({"message": "Patient updated successfully"}, status=200)
             else:
                 return JsonResponse({"message": "No changes made"}, status=200)
+                
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=500)
+    
     return JsonResponse({"error": "Invalid request method"}, status=400)
-
-
 @api_view(['GET'])
 @permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_patient_tests(request, patient_id, date):

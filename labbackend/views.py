@@ -435,19 +435,10 @@ def handle_patch_request(request):
 @csrf_exempt
 @permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_test_parameters(request, test_name):
-    try:
-        # MongoDB connection setup
-        #password = quote_plus('Smrft@2024')
-
-        # MongoDB connection with TLS certificate
-        client = MongoClient(
-            'mongodb://admin:ifS2nTs6vm@103.205.141.208:27017/Lab?authSource=admin',
-            tls=True,
-            tlsAllowInvalidCertificates=True  # <-- bypass certificate verification
-        )
-
+    try:        
+        client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
         db = client.Lab  # Database name
-        collection = db.labbackend_testdetails
+        collection = db.labbackend_testdetails  # Collection name
         # Fetch the test details based on the test_name
         test = collection.find_one({"test_name": test_name}, {"_id": 0, "parameters": 1})  # Assuming parameters is a field in your document
         if test:
@@ -467,11 +458,7 @@ def compare_test_details(request):
     # MongoDB connection setup
     #password = quote_plus('Smrft@2024')
         # MongoDB connection with TLS certificate
-    client = MongoClient(
-            'mongodb://admin:ifS2nTs6vm@103.205.141.208:27017/Lab?authSource=admin',
-            tls=True,
-            tlsAllowInvalidCertificates=True  # <-- bypass certificate verification
-        )
+    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
     db = client.Lab  # Database name
     collection = db.labbackend_testdetails  # Collection name
     # Retrieve the date and patient ID from the request
@@ -1092,6 +1079,7 @@ def get_patient_test_details(request):
             "gender": patient.gender if patient else "N/A",
             "refby": patient.refby if patient else "N/A",
             "B2B": patient.B2B,
+            "branch": patient.branch,
             "verified_by": test_values[0].verified_by,
         }
         for test in test_values[0].testdetails:
@@ -1404,6 +1392,7 @@ def overall_report(request):
                 "age": age,
                 "segment": patient.get("segment", "N/A"),
                 "b2b": patient.get("B2B", "N/A"),
+                "branch": patient.get("branch", "N/A"),
                 "sample_collector": patient.get("sample_collector", "N/A"),
                 "salesMapping": patient.get("salesMapping", "N/A"),
                 "total_amount": total_amount,
