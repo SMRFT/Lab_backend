@@ -92,7 +92,7 @@ def savesamplecollectordetails(request):
 @permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def update_sample_collector_details(request):
     password = quote_plus('Smrft@2024')
-    client = MongoClient(os.getenv('LAB_DB_HOST'))
+    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
     db = client["Lab"]
     collection = db["labbackend_logistictask"]
     try:

@@ -155,7 +155,7 @@ def verify_and_process_refund(request):
 
             # Connect to MongoDB
             password = quote_plus('Smrft@2024')
-            client = MongoClient(os.getenv('LAB_DB_HOST'))
+            client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
             db = client.Lab
             patients_collection = db["labbackend_patient"]
 
@@ -337,7 +337,7 @@ def verify_and_process_cancellation(request):
 
             # Connect to MongoDB
             password = quote_plus('Smrft@2024')
-            client = MongoClient(os.getenv('LAB_DB_HOST'))
+            client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
             db = client.Lab
             patients_collection = db["labbackend_patient"]
 
@@ -421,7 +421,7 @@ def logs_api(request):
     """Combined API endpoint for both refund and cancellation logs"""
     try:
         password = quote_plus('Smrft@2024')
-        client = MongoClient(os.getenv('LAB_DB_HOST'))
+        client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
         db = client.Lab
         patient_collection = db['labbackend_patient']
         
@@ -561,7 +561,7 @@ def dashboard_data(request):
             to_date = datetime.strptime(to_date, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
         # MongoDB connection
         password = quote_plus('Smrft@2024')
-        client = MongoClient(os.getenv('LAB_DB_HOST'))
+        client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
         db = client.Lab
         collection = db.labbackend_patient
         # Build the query for date filtering

@@ -156,7 +156,7 @@ def sample_status(request):
 def update_sample_status(request, patient_id):
     password = quote_plus('Smrft@2024')
     # MongoDB connection with TLS certificate
-    client = MongoClient(os.getenv('LAB_DB_HOST'))
+    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
     db = client.Lab  # Database name
     collection = db.labbackend_samplestatus
     if request.method == 'PUT':
@@ -261,7 +261,7 @@ def update_sample_collected(request, patient_id):
     # MongoDB connection setup
     #password = quote_plus('Smrft@2024')
     # MongoDB connection with TLS certificate
-    client = MongoClient(os.getenv('LAB_DB_HOST'))
+    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
     db = client.Lab  # Database name
     collection = db.labbackend_samplestatus  # Collection name
     if request.method == "PUT":
