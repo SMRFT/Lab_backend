@@ -18,7 +18,7 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 # MongoDB Connection
-client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
+client = MongoClient(os.getenv('LAB_DB_HOST'))
 db = client["Lab"]
 fs = gridfs.GridFS(db)
 
