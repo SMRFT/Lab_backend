@@ -126,7 +126,7 @@ def send_approval_email(request):
             # Connect to MongoDB to verify the test exists
             try:
                 password = quote_plus('Smrft@2024')
-                client = MongoClient(os.getenv('LAB_DB_HOST'))
+                client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
                 db = client.Lab
                 collection = db.labbackend_testdetails
                 # Check if test exists and get all test details
@@ -643,7 +643,7 @@ def save_test_value(request):
             print("Error in POST method:", str(e))  # Debugging
             return Response({"error": "An error occurred"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     elif request.method == 'PATCH':
-        client = MongoClient(os.getenv('LAB_DB_HOST'))
+        client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
         db = client.Lab
         collection = db.labbackend_testvalue
         patient_id = request.data.get("patient_id")
