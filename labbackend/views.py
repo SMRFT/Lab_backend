@@ -57,7 +57,7 @@ def get_test_details(request):
     try:
         # Securely encode password
         # MongoDB connection with TLS certificate
-        client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
+        client = MongoClient(os.getenv('LAB_DB_HOST'))
         db = client.Lab  # Database name
         collection = db.labbackend_testdetails  # Collection name
         if request.method == 'GET':
@@ -126,7 +126,7 @@ def send_approval_email(request):
             # Connect to MongoDB to verify the test exists
             try:
                 password = quote_plus('Smrft@2024')
-                client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
+                client = MongoClient(os.getenv('LAB_DB_HOST'))
                 db = client.Lab
                 collection = db.labbackend_testdetails
                 # Check if test exists and get all test details
@@ -299,7 +299,7 @@ def approve_test(request):
            
             # Connect to MongoDB
             password = quote_plus('Smrft@2024')
-            client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
+            client = MongoClient(os.getenv('LAB_DB_HOST'))
             db = client.Lab
             collection = db.labbackend_testdetails
            
@@ -329,7 +329,7 @@ def approve_test(request):
            
             # Connect to MongoDB
             
-            client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
+            client = MongoClient(os.getenv('LAB_DB_HOST'))
             db = client.Lab
             collection = db.labbackend_testdetails
            
@@ -409,7 +409,7 @@ def handle_patch_request(request):
         # MongoDB connection setup inside the function
         password = quote_plus('Smrft@2024')
         # MongoDB connection with TLS certificate
-        client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
+        client = MongoClient(os.getenv('LAB_DB_HOST'))
         db = client.Lab  # Database name
         collection = db.labbackend_testdetails  # Collection name
         data = json.loads(request.body.decode('utf-8'))
@@ -436,7 +436,7 @@ def handle_patch_request(request):
 @permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_test_parameters(request, test_name):
     try:        
-        client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
+        client = MongoClient(os.getenv('LAB_DB_HOST'))
         db = client.Lab  # Database name
         collection = db.labbackend_testdetails  # Collection name
         # Fetch the test details based on the test_name
@@ -458,7 +458,7 @@ def compare_test_details(request):
     # MongoDB connection setup
     #password = quote_plus('Smrft@2024')
         # MongoDB connection with TLS certificate
-    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
+    client = MongoClient(os.getenv('LAB_DB_HOST'))
     db = client.Lab  # Database name
     collection = db.labbackend_testdetails  # Collection name
     # Retrieve the date and patient ID from the request
@@ -643,38 +643,29 @@ def save_test_value(request):
             print("Error in POST method:", str(e))  # Debugging
             return Response({"error": "An error occurred"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     elif request.method == 'PATCH':
-        # MongoDB connection with TLS certificate
-        client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
-        db = client.Lab  # Database name
+        client = MongoClient(os.getenv('LAB_DB_HOST'))
+        db = client.Lab
         collection = db.labbackend_testvalue
-        # Extract parameters from the request
         patient_id = request.data.get("patient_id")
-        date_str = request.data.get("date")  # Date as string
+        date_str = request.data.get("date")
         test_details_json = request.data.get("testdetails", [])
-        # Validate required fields
         if not patient_id or not date_str:
             return Response({"error": "patient_id and date are required"}, status=status.HTTP_400_BAD_REQUEST)
         try:
-            # Convert the date string to a datetime object
             date = datetime.strptime(date_str, "%Y-%m-%d")
-            # Find the existing document for the patient and date
             test_value_record = collection.find_one({"patient_id": patient_id, "date": date})
             if not test_value_record:
-                return Response(
-                    {"error": "No record found for the given patient and date"},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            # Fetch and deserialize existing test details
-            existing_test_details = test_value_record.get("testdetails", "[]")
+                return Response({"error": "No record found for the given patient and date"}, status=status.HTTP_404_NOT_FOUND)
+            existing_test_details = test_value_record.get("testdetails", [])
             if isinstance(existing_test_details, str):
                 existing_test_details = json.loads(existing_test_details)
-            # Process new test details
             for new_test in test_details_json:
                 testname = new_test["testname"]
-                # Check if the test already exists in the existing test details
                 existing_test = next((t for t in existing_test_details if t["testname"] == testname), None)
                 if existing_test:
-                    # Update the existing test details
+                    # Set remarks and rerun on test level
+                    existing_test["remarks"] = new_test.get("remarks", existing_test.get("remarks", ""))
+                    existing_test["rerun"] = False  # Always false when edited
                     if "parameters" in new_test and new_test["parameters"]:
                         for new_param in new_test["parameters"]:
                             param_name = new_param["name"]
@@ -682,22 +673,23 @@ def save_test_value(request):
                                 (p for p in existing_test.get("parameters", []) if p["name"] == param_name), None
                             )
                             if existing_param:
-                                existing_param["value"] = new_param["value"]  # Update existing parameter value
+                                existing_param["value"] = new_param["value"]
                             else:
-                                existing_test.setdefault("parameters", []).append(new_param)  # Add new parameter
+                                existing_test.setdefault("parameters", []).append(new_param)
                     else:
-                        # Update the value and other details for tests without parameters
                         existing_test["value"] = new_test.get("value", existing_test.get("value", ""))
                         existing_test["unit"] = new_test.get("unit", existing_test.get("unit", "N/A"))
                         existing_test["reference_range"] = new_test.get("reference_range", existing_test.get("reference_range", "N/A"))
                         existing_test["specimen_type"] = new_test.get("specimen_type", existing_test.get("specimen_type", "N/A"))
+                        existing_test["remarks"] = new_test.get("remarks", existing_test.get("remarks", ""))
+                        existing_test["rerun"] = False
                 else:
-                    # Add the new test to the test details
+                    # New test — add to list
+                    new_test["rerun"] = False
                     existing_test_details.append(new_test)
-            # Update the document in the database
             collection.update_one(
                 {"patient_id": patient_id, "date": date},
-                {"$set": {"testdetails": json.dumps(existing_test_details)}}  # Serialize back to string
+                {"$set": {"testdetails": json.dumps(existing_test_details)}}  # Or remove json.dumps if Mongo stores natively
             )
             return Response({"message": "Test details updated successfully."}, status=status.HTTP_200_OK)
         except Exception as e:
@@ -709,7 +701,7 @@ def update_test_value(request):
     # MongoDB connection
     #password = quote_plus('Smrft@2024')
     # MongoDB connection with TLS certificate
-    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
+    client = MongoClient(os.getenv('LAB_DB_HOST'))
     db = client.Lab  # Database name
     collection = db.labbackend_testvalue
     try:
@@ -770,7 +762,7 @@ def update_dispatch_status(request, patient_id):
     password = quote_plus('Smrft@2024')
 
     # MongoDB connection with TLS certificate
-    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
+    client = MongoClient(os.getenv('LAB_DB_HOST'))
 
     db = client.Lab  # Database name
     collection = db.labbackend_testvalue
@@ -904,7 +896,7 @@ def approve_test_detail(request, patient_id, test_index):
     # MongoDB connection
     password = quote_plus('Smrft@2024')
     # MongoDB connection with TLS certificate
-    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
+    client = MongoClient(os.getenv('LAB_DB_HOST'))
     db = client.Lab  # Database name
     collection = db.labbackend_testvalue  # Your collection name
     # Log the incoming request body
@@ -958,7 +950,7 @@ def rerun_test_detail(request, patient_id, test_index):
     # MongoDB connection
     password = quote_plus('Smrft@2024')
         # MongoDB connection with TLS certificate
-    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
+    client = MongoClient(os.getenv('LAB_DB_HOST'))
     db = client.Lab  # Database name
     collection = db.labbackend_testvalue  # Your collection name
     """Rerun the test detail at the given index for the specified patient."""
@@ -1006,7 +998,7 @@ def update_test_detail(request, patient_id):
     password = quote_plus('Smrft@2024')
 
         # MongoDB connection with TLS certificate
-    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
+    client = MongoClient(os.getenv('LAB_DB_HOST'))
 
     db = client.Lab  # Database name
     collection = db.labbackend_testvalue  # Your collection name
@@ -1219,7 +1211,7 @@ from .models import SampleStatus, TestValue
 def overall_report(request):
     try:
         # MongoDB setup
-        client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
+        client = MongoClient(os.getenv('LAB_DB_HOST'))
         db = client.Lab
         patients_collection = db["labbackend_patient"]
 
@@ -1280,31 +1272,38 @@ def overall_report(request):
         for patient in patients:
             pid = patient.get("patient_id", "N/A")
 
-            # Payment method parsing
-            paymentmethod = "N/A"
+            # Payment method parsing - UPDATED TO RETURN COMPLETE DETAILS
+            payment_details = {}
             raw = patient.get("payment_method", "")
+            
             if raw:
                 if isinstance(raw, dict):
-                    paymentmethod = raw.get("paymentmethod", "N/A")
+                    payment_details = raw
                 elif isinstance(raw, str):
                     try:
                         cleaned = raw.strip('"')
                         payment_data = json.loads(cleaned) if cleaned else {}
-                        paymentmethod = payment_data.get("paymentmethod", "N/A") if isinstance(payment_data, dict) else str(payment_data)
+                        if isinstance(payment_data, dict):
+                            payment_details = payment_data
+                        else:
+                            payment_details = {"paymentmethod": str(payment_data)}
                     except:
-                        paymentmethod = raw
+                        payment_details = {"paymentmethod": raw}
+            else:
+                payment_details = {"paymentmethod": "N/A"}
 
-            # Partial payment
-            partial_payment_method = paymentmethod
-            if paymentmethod == "PartialPayment":
+            # Partial payment handling - UPDATED
+            if payment_details.get("paymentmethod") == "PartialPayment":
                 partial_data = patient.get("PartialPayment", "")
                 try:
                     if isinstance(partial_data, str):
                         partial_data = json.loads(partial_data.strip('"')) if partial_data.strip('"') else {}
                     if isinstance(partial_data, dict):
-                        partial_payment_method = partial_data.get("method", "PartialPayment")
+                        # Merge partial payment details with existing payment details
+                        payment_details.update(partial_data)
+                        payment_details["paymentmethod"] = "PartialPayment"
                 except:
-                    partial_payment_method = "PartialPayment"
+                    pass
 
             # Test list
             test_list = []
@@ -1382,7 +1381,7 @@ def overall_report(request):
                 if dispatch_all:
                     status = "Dispatched"
 
-            # Final patient object
+            # Final patient object - UPDATED TO INCLUDE COMPLETE PAYMENT DETAILS
             formatted_data.append({
                 "date": patient.get("date").strftime("%Y-%m-%d") if "date" in patient else "N/A",
                 "patient_id": pid,
@@ -1399,7 +1398,7 @@ def overall_report(request):
                 "credit_amount": credit_amount,
                 "credit_details": credit_details,
                 "discount": discount,
-                "payment_method": partial_payment_method,
+                "payment_method": payment_details,  # CHANGED: Now returns complete payment details object
                 "test_names": testnames,
                 "no_of_tests": no_of_tests,
                 "bill_no": patient.get("bill_no", "N/A"),
@@ -1413,8 +1412,7 @@ def overall_report(request):
         print("Critical Error:", str(e))
         print(traceback.format_exc())
         return JsonResponse({"error": str(e)}, status=500)
-
-
+    
 @api_view(['GET'])
 @csrf_exempt
 @permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
