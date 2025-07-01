@@ -155,7 +155,7 @@ def verify_and_process_refund(request):
 
             # Connect to MongoDB
             password = quote_plus('Smrft@2024')
-            client = MongoClient(os.getenv('LAB_DB_HOST'))
+            client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
             db = client.Lab
             patients_collection = db["labbackend_patient"]
 
@@ -337,7 +337,7 @@ def verify_and_process_cancellation(request):
 
             # Connect to MongoDB
             password = quote_plus('Smrft@2024')
-            client = MongoClient(os.getenv('LAB_DB_HOST'))
+            client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
             db = client.Lab
             patients_collection = db["labbackend_patient"]
 
