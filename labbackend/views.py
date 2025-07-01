@@ -57,7 +57,7 @@ def get_test_details(request):
     try:
         # Securely encode password
         # MongoDB connection with TLS certificate
-        client = MongoClient(os.getenv('LAB_DB_HOST'))
+        client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
         db = client.Lab  # Database name
         collection = db.labbackend_testdetails  # Collection name
         if request.method == 'GET':
@@ -299,7 +299,7 @@ def approve_test(request):
            
             # Connect to MongoDB
             password = quote_plus('Smrft@2024')
-            client = MongoClient(os.getenv('LAB_DB_HOST'))
+            client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
             db = client.Lab
             collection = db.labbackend_testdetails
            
@@ -329,7 +329,7 @@ def approve_test(request):
            
             # Connect to MongoDB
             
-            client = MongoClient(os.getenv('LAB_DB_HOST'))
+            client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
             db = client.Lab
             collection = db.labbackend_testdetails
            
