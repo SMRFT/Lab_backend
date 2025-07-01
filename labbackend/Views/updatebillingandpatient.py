@@ -26,7 +26,7 @@ load_dotenv()
 @csrf_exempt
 @permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def update_patient(request, patient_id):
-    client = MongoClient(os.getenv('LAB_DB_HOST'))
+    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
     db = client["Lab"]
     collection = db["labbackend_patient"]
     
@@ -130,7 +130,7 @@ import os
 @permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def update_billing(request, patient_id):
     password = quote_plus('Smrft@2024')
-    client = MongoClient(os.getenv('LAB_DB_HOST'))
+    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
     db = client.Lab
     collection = db['labbackend_patient']
 
@@ -175,7 +175,7 @@ def update_credit_amount(request, patient_id):
     password = quote_plus('Smrft@2024')
 
         # MongoDB connection with TLS certificate
-    client = MongoClient(os.getenv('LAB_DB_HOST'))
+    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
 
     db = client.Lab  # Database name
     collection = db['labbackend_patient']
@@ -220,7 +220,7 @@ def update_credit_amount(request, patient_id):
 def credit_amount_update(request, patient_id):
     password = quote_plus('Smrft@2024')
     # MongoDB connection with TLS certificate
-    client = MongoClient(os.getenv('LAB_DB_HOST'))
+    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
     db = client.Lab
     collection = db['labbackend_patient']
     if request.method == "PATCH":
