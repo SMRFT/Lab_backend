@@ -421,7 +421,7 @@ def logs_api(request):
     """Combined API endpoint for both refund and cancellation logs"""
     try:
         password = quote_plus('Smrft@2024')
-        client = MongoClient(os.getenv('LAB_DB_HOST'))
+        client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
         db = client.Lab
         patient_collection = db['labbackend_patient']
         
