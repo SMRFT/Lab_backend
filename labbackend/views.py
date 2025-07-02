@@ -1447,7 +1447,8 @@ def patient_test_sorting(request):
         return JsonResponse({'error': str(e)}, status=500)
 
 
-
+@api_view(['GET'])
+@csrf_exempt
 def send_email(request):
     try:
         subject = request.data.get('subject', 'No Subject')
