@@ -33,7 +33,7 @@ def calculate_distance(lat1, lon1, lat2, lon2):
 def sample_collector_location(request):
     """
     Enhanced endpoint for sample collector location tracking
-    GET: Retrieve location data
+    GET: Retrieve location data (supports both single collector and date-based queries)
     POST: Start tracking (save start location)
     PUT: Update current location or end tracking
     """
@@ -43,30 +43,26 @@ def sample_collector_location(request):
             date = request.GET.get('date')
             sample_collector = request.GET.get('sampleCollector')
             
-            if not date or not sample_collector:
-                return JsonResponse({
-                    'success': False,
-                    'message': 'Date and sampleCollector parameters are required'
-                }, status=400)
-            
-            # Get location data for the collector on the specified date
-            try:
-                location_data = SampleCollectorLocation.objects.get(
-                    sampleCollector=sample_collector,
-                    date=date
-                )
-                
-                # Parse route points if available
-                route_points = []
-                if location_data.routePoints:
-                    try:
-                        route_points = json.loads(location_data.routePoints)
-                    except json.JSONDecodeError:
-                        route_points = []
+            # If no parameters provided, return all data
+            if not date and not sample_collector:
+                # Return all location data for dashboard stats
+                all_data = SampleCollectorLocation.objects.all().order_by('-date', '-lastUpdated')
                 
                 response_data = {
                     'success': True,
-                    'data': [{
+                    'data': []
+                }
+                
+                for location_data in all_data:
+                    # Parse route points if available
+                    route_points = []
+                    if location_data.routePoints:
+                        try:
+                            route_points = json.loads(location_data.routePoints)
+                        except json.JSONDecodeError:
+                            route_points = []
+                    
+                    response_data['data'].append({
                         'id': location_data.id,
                         'sampleCollector': location_data.sampleCollector,
                         'date': location_data.date,
@@ -76,23 +72,127 @@ def sample_collector_location(request):
                         'longitudeEnd': location_data.longitudeEnd,
                         'currentLatitude': location_data.currentLatitude,
                         'currentLongitude': location_data.currentLongitude,
-                        'distance_travelled': location_data.distance_travelled,
+                        'distance_travelled': location_data.distance_travelled or "0.00",
                         'startTime': location_data.startTime.isoformat() if location_data.startTime else None,
                         'endTime': location_data.endTime.isoformat() if location_data.endTime else None,
                         'totalDuration': location_data.totalDuration,
                         'isActive': location_data.isActive,
                         'lastUpdated': location_data.lastUpdated.isoformat(),
                         'routePoints': route_points
-                    }]
-                }
+                    })
                 
                 return JsonResponse(response_data)
-                
-            except SampleCollectorLocation.DoesNotExist:
-                return JsonResponse({
-                    'success': False,
-                    'message': 'No location data found for the specified collector and date'
-                })
+            
+            # If only date is provided, return all collectors for that date
+            elif date and not sample_collector:
+                try:
+                    # Parse the date string to ensure it's valid
+                    date_obj = datetime.strptime(date, '%Y-%m-%d').date()
+                    
+                    location_data_list = SampleCollectorLocation.objects.filter(
+                        date=date_obj
+                    ).order_by('-lastUpdated')
+                    
+                    response_data = {
+                        'success': True,
+                        'data': []
+                    }
+                    
+                    for location_data in location_data_list:
+                        # Parse route points if available
+                        route_points = []
+                        if location_data.routePoints:
+                            try:
+                                route_points = json.loads(location_data.routePoints)
+                            except json.JSONDecodeError:
+                                route_points = []
+                        
+                        response_data['data'].append({
+                            'id': location_data.id,
+                            'sampleCollector': location_data.sampleCollector,
+                            'date': location_data.date,
+                            'latitudeStart': location_data.latitudeStart,
+                            'longitudeStart': location_data.longitudeStart,
+                            'latitudeEnd': location_data.latitudeEnd,
+                            'longitudeEnd': location_data.longitudeEnd,
+                            'currentLatitude': location_data.currentLatitude,
+                            'currentLongitude': location_data.currentLongitude,
+                            'distance_travelled': location_data.distance_travelled or "0.00",
+                            'startTime': location_data.startTime.isoformat() if location_data.startTime else None,
+                            'endTime': location_data.endTime.isoformat() if location_data.endTime else None,
+                            'totalDuration': location_data.totalDuration,
+                            'isActive': location_data.isActive,
+                            'lastUpdated': location_data.lastUpdated.isoformat(),
+                            'routePoints': route_points
+                        })
+                    
+                    if not response_data['data']:
+                        return JsonResponse({
+                            'success': False,
+                            'message': 'No location data found for the specified date'
+                        })
+                    
+                    return JsonResponse(response_data)
+                    
+                except ValueError:
+                    return JsonResponse({
+                        'success': False,
+                        'message': 'Invalid date format. Please use YYYY-MM-DD format'
+                    }, status=400)
+            
+            # If both date and sample_collector are provided
+            else:
+                try:
+                    # Parse the date string to ensure it's valid
+                    date_obj = datetime.strptime(date, '%Y-%m-%d').date()
+                    
+                    location_data = SampleCollectorLocation.objects.get(
+                        sampleCollector=sample_collector,
+                        date=date_obj
+                    )
+                    
+                    # Parse route points if available
+                    route_points = []
+                    if location_data.routePoints:
+                        try:
+                            route_points = json.loads(location_data.routePoints)
+                        except json.JSONDecodeError:
+                            route_points = []
+                    
+                    response_data = {
+                        'success': True,
+                        'data': [{
+                            'id': location_data.id,
+                            'sampleCollector': location_data.sampleCollector,
+                            'date': location_data.date,
+                            'latitudeStart': location_data.latitudeStart,
+                            'longitudeStart': location_data.longitudeStart,
+                            'latitudeEnd': location_data.latitudeEnd,
+                            'longitudeEnd': location_data.longitudeEnd,
+                            'currentLatitude': location_data.currentLatitude,
+                            'currentLongitude': location_data.currentLongitude,
+                            'distance_travelled': location_data.distance_travelled or "0.00",
+                            'startTime': location_data.startTime.isoformat() if location_data.startTime else None,
+                            'endTime': location_data.endTime.isoformat() if location_data.endTime else None,
+                            'totalDuration': location_data.totalDuration,
+                            'isActive': location_data.isActive,
+                            'lastUpdated': location_data.lastUpdated.isoformat(),
+                            'routePoints': route_points
+                        }]
+                    }
+                    
+                    return JsonResponse(response_data)
+                    
+                except ValueError:
+                    return JsonResponse({
+                        'success': False,
+                        'message': 'Invalid date format. Please use YYYY-MM-DD format'
+                    }, status=400)
+                except SampleCollectorLocation.DoesNotExist:
+                    return JsonResponse({
+                        'success': False,
+                        'message': 'No location data found for the specified collector and date'
+                    })
                 
         except Exception as e:
             return JsonResponse({
@@ -115,6 +215,15 @@ def sample_collector_location(request):
                     'message': 'sampleCollector, date, latitudeStart, and longitudeStart are required'
                 }, status=400)
             
+            # Parse the date string
+            try:
+                date_obj = datetime.strptime(date, '%Y-%m-%d').date()
+            except ValueError:
+                return JsonResponse({
+                    'success': False,
+                    'message': 'Invalid date format. Please use YYYY-MM-DD format'
+                }, status=400)
+            
             # Create or update location record
             location_id = f"{sample_collector}_{date}"
             
@@ -122,14 +231,18 @@ def sample_collector_location(request):
                 id=location_id,
                 defaults={
                     'sampleCollector': sample_collector,
-                    'date': datetime.strptime(date, '%Y-%m-%d').date(),
+                    'date': date_obj,
                     'latitudeStart': str(latitude_start),
                     'longitudeStart': str(longitude_start),
                     'currentLatitude': str(latitude_start),
                     'currentLongitude': str(longitude_start),
                     'startTime': timezone.now(),
                     'isActive': True,
-                    'routePoints': json.dumps([{'lat': latitude_start, 'lng': longitude_start, 'timestamp': timezone.now().isoformat()}])
+                    'routePoints': json.dumps([{
+                        'lat': latitude_start, 
+                        'lng': longitude_start, 
+                        'timestamp': timezone.now().isoformat()
+                    }])
                 }
             )
             
@@ -146,7 +259,11 @@ def sample_collector_location(request):
                 location_data.longitudeEnd = None
                 location_data.distance_travelled = None
                 location_data.totalDuration = None
-                location_data.routePoints = json.dumps([{'lat': latitude_start, 'lng': longitude_start, 'timestamp': timezone.now().isoformat()}])
+                location_data.routePoints = json.dumps([{
+                    'lat': latitude_start, 
+                    'lng': longitude_start, 
+                    'timestamp': timezone.now().isoformat()
+                }])
                 location_data.save()
             
             return JsonResponse({
@@ -178,11 +295,20 @@ def sample_collector_location(request):
                     'message': 'sampleCollector and date are required'
                 }, status=400)
             
+            # Parse the date string
+            try:
+                date_obj = datetime.strptime(date, '%Y-%m-%d').date()
+            except ValueError:
+                return JsonResponse({
+                    'success': False,
+                    'message': 'Invalid date format. Please use YYYY-MM-DD format'
+                }, status=400)
+            
             # Get existing location record
             try:
                 location_data = SampleCollectorLocation.objects.get(
                     sampleCollector=sample_collector,
-                    date=date
+                    date=date_obj
                 )
             except SampleCollectorLocation.DoesNotExist:
                 return JsonResponse({
@@ -232,7 +358,9 @@ def sample_collector_location(request):
                         )
                         total_distance += distance
                     
-                    location_data.distance_travelled = f"{total_distance:.2f}"
+                    # Convert to kilometers
+                    total_distance_km = total_distance / 1000
+                    location_data.distance_travelled = f"{total_distance_km:.2f}"
                     location_data.routePoints = json.dumps(route_points)
                 
                 # Calculate duration
@@ -259,6 +387,7 @@ def sample_collector_location(request):
                 if current_lat and current_lng:
                     location_data.currentLatitude = str(current_lat)
                     location_data.currentLongitude = str(current_lng)
+                    location_data.lastUpdated = timezone.now()
                     
                     # Add point to route
                     route_points = []
@@ -340,9 +469,11 @@ def get_collector_route(request):
             }, status=400)
         
         try:
+            date_obj = datetime.strptime(date, '%Y-%m-%d').date()
+            
             location_data = SampleCollectorLocation.objects.get(
                 sampleCollector=sample_collector,
-                date=date
+                date=date_obj
             )
             
             route_points = []
@@ -364,6 +495,11 @@ def get_collector_route(request):
                 }
             })
             
+        except ValueError:
+            return JsonResponse({
+                'success': False,
+                'message': 'Invalid date format. Please use YYYY-MM-DD format'
+            }, status=400)
         except SampleCollectorLocation.DoesNotExist:
             return JsonResponse({
                 'success': False,
@@ -374,4 +510,56 @@ def get_collector_route(request):
         return JsonResponse({
             'success': False,
             'message': f'Error retrieving route data: {str(e)}'
+        }, status=500)
+
+@api_view(['GET'])
+def get_live_tracking_data(request):
+    """Get live tracking data for current date"""
+    try:
+        today = datetime.now().date()
+        
+        # Get all location data for today
+        today_data = SampleCollectorLocation.objects.filter(
+            date=today
+        ).order_by('-lastUpdated')
+        
+        response_data = {
+            'success': True,
+            'data': []
+        }
+        
+        for location_data in today_data:
+            # Parse route points if available
+            route_points = []
+            if location_data.routePoints:
+                try:
+                    route_points = json.loads(location_data.routePoints)
+                except json.JSONDecodeError:
+                    route_points = []
+            
+            response_data['data'].append({
+                'id': location_data.id,
+                'sampleCollector': location_data.sampleCollector,
+                'date': location_data.date,
+                'latitudeStart': location_data.latitudeStart,
+                'longitudeStart': location_data.longitudeStart,
+                'latitudeEnd': location_data.latitudeEnd,
+                'longitudeEnd': location_data.longitudeEnd,
+                'currentLatitude': location_data.currentLatitude,
+                'currentLongitude': location_data.currentLongitude,
+                'distance_travelled': location_data.distance_travelled or "0.00",
+                'startTime': location_data.startTime.isoformat() if location_data.startTime else None,
+                'endTime': location_data.endTime.isoformat() if location_data.endTime else None,
+                'totalDuration': location_data.totalDuration,
+                'isActive': location_data.isActive,
+                'lastUpdated': location_data.lastUpdated.isoformat(),
+                'routePoints': route_points
+            })
+        
+        return JsonResponse(response_data)
+        
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'message': f'Error retrieving live tracking data: {str(e)}'
         }, status=500)
