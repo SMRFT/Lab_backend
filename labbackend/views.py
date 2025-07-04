@@ -435,10 +435,12 @@ def handle_patch_request(request):
 @csrf_exempt
 @permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_test_parameters(request, test_name):
+
     try:        
         client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
         db = client.Lab  # Database name
         collection = db.labbackend_testdetails  # Collection name
+
         # Fetch the test details based on the test_name
         test = collection.find_one({"test_name": test_name}, {"_id": 0, "parameters": 1})  # Assuming parameters is a field in your document
         if test:
@@ -458,9 +460,11 @@ def compare_test_details(request):
     # MongoDB connection setup
     #password = quote_plus('Smrft@2024')
         # MongoDB connection with TLS certificate
+
     client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
+
     db = client.Lab  # Database name
-    collection = db.labbackend_testdetails  # Collection name
+    collection = db.labbackend_testdetails
     # Retrieve the date and patient ID from the request
     date = request.GET.get('date')
     patient_id = request.GET.get('patient_id')
