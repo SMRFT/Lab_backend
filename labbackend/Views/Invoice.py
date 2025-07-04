@@ -24,7 +24,10 @@ from pyauth.auth import HasRoleAndDataPermission
 from dotenv import load_dotenv
 import time
 load_dotenv()
-
+def get_mongo_collection():
+    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
+    db = client["Lab"]
+    return db["labbackend_invoice"]
 @api_view(['GET'])
 @csrf_exempt
 @permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
@@ -40,7 +43,7 @@ def get_all_patients(request):
     if clinical_name:
         carry_credit_clinicals = ClinicalName.objects.filter(
             clinicalname=clinical_name,
-            b2bType="Carry Credit"
+            b2bType="Credit"
         )
         if carry_credit_clinicals.exists():
             patients = patients.filter(B2B=clinical_name)
@@ -87,15 +90,12 @@ def get_all_patients(request):
 def get_clinicalname_invoice(request):
     if request.method == 'GET':
         # Filter clinical names with b2bType "Carry Credit"
-        clinicalname = ClinicalName.objects.filter(b2bType="Carry Credit")
+        clinicalname = ClinicalName.objects.filter(b2bType="Credit")
         serializer = ClinicalNameSerializer(clinicalname, many=True)
         return Response(serializer.data)
 
 # Function to get MongoDB collection
-def get_mongo_collection():
-    client = MongoClient(os.getenv('LAB_DB_HOST'))
-    db = client["Lab"]
-    return db["labbackend_invoice"]
+
 
 @api_view(["POST"])
 @csrf_exempt
@@ -114,7 +114,7 @@ def generate_invoice(request):
             if clinical_name:
                 carry_credit_clinical = ClinicalName.objects.filter(
                     clinicalname=clinical_name, 
-                    b2bType="Carry Credit"
+                    b2bType="Credit"
                 ).first()
                 
                 if not carry_credit_clinical:
@@ -133,7 +133,7 @@ def generate_invoice(request):
 
             return JsonResponse(
                 {
-                    "message": "Carry Credit Invoice stored successfully", 
+                    "message": "Credit Invoice stored successfully", 
                     "id": str(result.inserted_id),
                     "invoiceNumber": data.get("invoiceNumber"),
                     "status": "success"
@@ -364,7 +364,7 @@ def patient_report(request):
         return JsonResponse({"error": "Invalid date format. Use YYYY-MM-DD."}, status=400)
 
     # MongoDB Connection
-    client = MongoClient(os.getenv('LAB_DB_HOST'))
+    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
     db = client.Lab
     patients_collection = db["labbackend_patient"]
     invoice_collection = db["labbackend_invoice"]
