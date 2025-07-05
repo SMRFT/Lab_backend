@@ -138,8 +138,7 @@ class TestValue(AuditModel):
     age = models.IntegerField()
     date = models.DateField()
     barcode= models.CharField(max_length=50)
-    testdetails = models.JSONField()  # Store all test details in JSON format
-    verified_by = models.CharField(max_length=200)
+    testdetails = models.JSONField()  # Store all test details in JSON format   
     def save(self, *args, **kwargs):
         if not self._id:
             self._id = str(ObjectId())  # Convert ObjectId to string
@@ -273,5 +272,13 @@ class SampleCollectorLocation(AuditModel):
         if self.startTime and self.endTime and not self.totalDuration:
             self.totalDuration = self.calculate_duration()
         super().save(*args, **kwargs)
-         
+    
+class B2BPackage(AuditModel):
+    packageName = models.CharField(max_length=255,primary_key=True)
+    clinicalname = models.CharField(max_length=255)
+    rate = models.CharField(max_length=50)
+    testNames = models.JSONField()
+    status = models.CharField(max_length=50)
+    def __str__(self):
+        return self.packageName     
 

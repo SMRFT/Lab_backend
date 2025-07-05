@@ -598,7 +598,6 @@ def save_test_value(request):
             patient = Patient.objects.get(patient_id=payload['patient_id'])
             test_details_json = payload.get("testdetails", [])
             barcode=payload.get("barcode")
-            verified_by = payload.get('verified_by')
             if not isinstance(test_details_json, list) or not test_details_json:
                 return Response({"error": "Invalid test details format"}, status=status.HTTP_400_BAD_REQUEST)
             test_value_record, created = TestValue.objects.get_or_create(
@@ -609,7 +608,6 @@ def save_test_value(request):
                     'age': patient.age,
                     "barcode": barcode,
                     'testdetails': test_details_json,
-                    'verified_by': verified_by,
                 }
             )
             existing_test_details = test_value_record.testdetails if not created else []
@@ -643,29 +641,38 @@ def save_test_value(request):
             print("Error in POST method:", str(e))  # Debugging
             return Response({"error": "An error occurred"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     elif request.method == 'PATCH':
+        # MongoDB connection with TLS certificate
         client = MongoClient(os.getenv('LAB_DB_HOST'))
-        db = client.Lab
+        db = client.Lab  # Database name
         collection = db.labbackend_testvalue
+        # Extract parameters from the request
         patient_id = request.data.get("patient_id")
-        date_str = request.data.get("date")
+        date_str = request.data.get("date")  # Date as string
         test_details_json = request.data.get("testdetails", [])
+        # Validate required fields
         if not patient_id or not date_str:
             return Response({"error": "patient_id and date are required"}, status=status.HTTP_400_BAD_REQUEST)
         try:
+            # Convert the date string to a datetime object
             date = datetime.strptime(date_str, "%Y-%m-%d")
+            # Find the existing document for the patient and date
             test_value_record = collection.find_one({"patient_id": patient_id, "date": date})
             if not test_value_record:
-                return Response({"error": "No record found for the given patient and date"}, status=status.HTTP_404_NOT_FOUND)
-            existing_test_details = test_value_record.get("testdetails", [])
+                return Response(
+                    {"error": "No record found for the given patient and date"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            # Fetch and deserialize existing test details
+            existing_test_details = test_value_record.get("testdetails", "[]")
             if isinstance(existing_test_details, str):
                 existing_test_details = json.loads(existing_test_details)
+            # Process new test details
             for new_test in test_details_json:
                 testname = new_test["testname"]
+                # Check if the test already exists in the existing test details
                 existing_test = next((t for t in existing_test_details if t["testname"] == testname), None)
                 if existing_test:
-                    # Set remarks and rerun on test level
-                    existing_test["remarks"] = new_test.get("remarks", existing_test.get("remarks", ""))
-                    existing_test["rerun"] = False  # Always false when edited
+                    # Update the existing test details
                     if "parameters" in new_test and new_test["parameters"]:
                         for new_param in new_test["parameters"]:
                             param_name = new_param["name"]
@@ -673,23 +680,22 @@ def save_test_value(request):
                                 (p for p in existing_test.get("parameters", []) if p["name"] == param_name), None
                             )
                             if existing_param:
-                                existing_param["value"] = new_param["value"]
+                                existing_param["value"] = new_param["value"]  # Update existing parameter value
                             else:
-                                existing_test.setdefault("parameters", []).append(new_param)
+                                existing_test.setdefault("parameters", []).append(new_param)  # Add new parameter
                     else:
+                        # Update the value and other details for tests without parameters
                         existing_test["value"] = new_test.get("value", existing_test.get("value", ""))
                         existing_test["unit"] = new_test.get("unit", existing_test.get("unit", "N/A"))
                         existing_test["reference_range"] = new_test.get("reference_range", existing_test.get("reference_range", "N/A"))
                         existing_test["specimen_type"] = new_test.get("specimen_type", existing_test.get("specimen_type", "N/A"))
-                        existing_test["remarks"] = new_test.get("remarks", existing_test.get("remarks", ""))
-                        existing_test["rerun"] = False
                 else:
-                    # New test — add to list
-                    new_test["rerun"] = False
+                    # Add the new test to the test details
                     existing_test_details.append(new_test)
+            # Update the document in the database
             collection.update_one(
                 {"patient_id": patient_id, "date": date},
-                {"$set": {"testdetails": json.dumps(existing_test_details)}}  # Or remove json.dumps if Mongo stores natively
+                {"$set": {"testdetails": json.dumps(existing_test_details)}}  # Serialize back to string
             )
             return Response({"message": "Test details updated successfully."}, status=status.HTTP_200_OK)
         except Exception as e:
@@ -1071,12 +1077,12 @@ def get_patient_test_details(request):
             "gender": patient.gender if patient else "N/A",
             "refby": patient.refby if patient else "N/A",
             "B2B": patient.B2B,
-            "branch": patient.branch,
-            "verified_by": test_values[0].verified_by,
+            "branch": patient.branch,           
         }
         for test in test_values[0].testdetails:
             testname = test.get("testname")
             department = test.get("department", "N/A")
+            verified_by = test.get("verified_by", "N/A")
             parameters = test.get("parameters", [])
             status = next(
                 (status for status in sample_status[0].testdetails if status.get("testname") == testname), None)
@@ -1085,6 +1091,7 @@ def get_patient_test_details(request):
             test_detail = {
                 "department": department,
                 "testname": testname,
+                "verified_by": verified_by,
                 "samplecollected_time": samplecollected_time,
                 "received_time": received_time
             }
@@ -1214,12 +1221,10 @@ def overall_report(request):
         client = MongoClient(os.getenv('LAB_DB_HOST'))
         db = client.Lab
         patients_collection = db["labbackend_patient"]
-
         # Date filters
         from_date = request.GET.get("from_date")
         to_date = request.GET.get("to_date")
         patient_id = request.GET.get("patient_id")
-
         try:
             if from_date:
                 from_date = datetime.strptime(from_date, "%Y-%m-%d")
@@ -1227,55 +1232,43 @@ def overall_report(request):
                 to_date = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
         except ValueError:
             return JsonResponse({"error": "Invalid date format. Use YYYY-MM-DD."}, status=400)
-
         # Build MongoDB query
         query = {}
         if patient_id:
             query["patient_id"] = patient_id
         if from_date and to_date:
             query["date"] = {"$gte": from_date, "$lt": to_date}
-
         patients = list(patients_collection.find(query))
         if not patients:
             return JsonResponse([], safe=False)
-
         patient_ids = [p.get("patient_id") for p in patients if p.get("patient_id")]
-
         # Status data: bulk fetch from SQL DBs
         from_datetime = make_aware(from_date or datetime.now())
         to_datetime = make_aware((to_date - timedelta(days=1)) if to_date else datetime.now().replace(hour=23, minute=59, second=59))
-
         sample_status_records = SampleStatus.objects.filter(
             patient_id__in=patient_ids,
             date__range=(from_datetime, to_datetime)
         ).values("patient_id", "testdetails")
-
         test_value_records = TestValue.objects.filter(
             patient_id__in=patient_ids,
             date__range=(from_datetime, to_datetime)
         ).values("patient_id", "barcode", "testdetails")
-
         # Organize status data
         sample_status_map = {}
         for record in sample_status_records:
             sample_status_map.setdefault(record["patient_id"], []).extend(record["testdetails"])
-
         test_value_map = {}
         for record in test_value_records:
             pid = record["patient_id"]
             test_value_map.setdefault(pid, {"barcode": record["barcode"], "testdetails": []})
             test_value_map[pid]["testdetails"].extend(record["testdetails"])
-
         # Final result
         formatted_data = []
-
         for patient in patients:
             pid = patient.get("patient_id", "N/A")
-
             # Payment method parsing - UPDATED TO RETURN COMPLETE DETAILS
             payment_details = {}
             raw = patient.get("payment_method", "")
-            
             if raw:
                 if isinstance(raw, dict):
                     payment_details = raw
@@ -1291,7 +1284,6 @@ def overall_report(request):
                         payment_details = {"paymentmethod": raw}
             else:
                 payment_details = {"paymentmethod": "N/A"}
-
             # Partial payment handling - UPDATED
             if payment_details.get("paymentmethod") == "PartialPayment":
                 partial_data = patient.get("PartialPayment", "")
@@ -1304,7 +1296,6 @@ def overall_report(request):
                         payment_details["paymentmethod"] = "PartialPayment"
                 except:
                     pass
-
             # Test list
             test_list = []
             test_field = patient.get("testname", [])
@@ -1317,11 +1308,9 @@ def overall_report(request):
                 test_list = test_field
             testnames = ", ".join([test.get("testname", "") for test in test_list])
             no_of_tests = len(test_list)
-
             # Age
             age = f"{patient.get('age', 'N/A')} {patient.get('age_type', '')}"
             discount = int(patient.get('discount', 0) or 0)
-
             # Amounts
             try:
                 total_amount = int(float(patient.get("totalAmount", 0) or 0))
@@ -1331,7 +1320,6 @@ def overall_report(request):
                 credit_amount = int(float(patient.get("credit_amount", 0) or 0))
             except:
                 credit_amount = 0
-
             credit_details = []
             if isinstance(patient.get("credit_details"), str):
                 try:
@@ -1340,19 +1328,16 @@ def overall_report(request):
                     pass
             elif isinstance(patient.get("credit_details"), list):
                 credit_details = patient["credit_details"]
-
             # Status determination
             barcode = None
             status = "Registered"
             sample_tests = sample_status_map.get(pid, [])
             test_values = test_value_map.get(pid, {}).get("testdetails", [])
             barcode = test_value_map.get(pid, {}).get("barcode")
-
             all_collected = all(t.get("samplestatus") == "Sample Collected" for t in sample_tests) if sample_tests else False
             partially_collected = any(t.get("samplestatus") == "Sample Collected" for t in sample_tests)
             all_received = all(t.get("samplestatus") == "Received" for t in sample_tests) if sample_tests else False
             partially_received = any(t.get("samplestatus") == "Received" for t in sample_tests)
-
             if all_collected:
                 status = "Collected"
             elif partially_collected:
@@ -1361,14 +1346,12 @@ def overall_report(request):
                 status = "Received"
             elif partially_received:
                 status = "Partially Received"
-
             if test_values:
                 all_tested = all(t.get("value") is not None for t in test_values)
                 partially_tested = any(t.get("value") is not None for t in test_values)
                 approve_all = all(t.get("approve") for t in test_values)
                 approve_partial = any(t.get("approve") for t in test_values)
                 dispatch_all = all(t.get("dispatch") for t in test_values)
-
                 if all_received or partially_received:
                     if all_tested:
                         status = "Tested"
@@ -1380,7 +1363,6 @@ def overall_report(request):
                     status = "Partially Approved"
                 if dispatch_all:
                     status = "Dispatched"
-
             # Final patient object - UPDATED TO INCLUDE COMPLETE PAYMENT DETAILS
             formatted_data.append({
                 "date": patient.get("date").strftime("%Y-%m-%d") if "date" in patient else "N/A",
@@ -1389,6 +1371,7 @@ def overall_report(request):
                 "gender": patient.get("gender", "N/A"),
                 "refby": patient.get("refby", "N/A"),
                 "age": age,
+                "email": patient.get("email", "N/A"),
                 "segment": patient.get("segment", "N/A"),
                 "b2b": patient.get("B2B", "N/A"),
                 "branch": patient.get("branch", "N/A"),
@@ -1406,7 +1389,6 @@ def overall_report(request):
                 "barcode": barcode,
                 "status": status,
             })
-
         return JsonResponse(formatted_data, safe=False)
     except Exception as e:
         print("Critical Error:", str(e))
@@ -1448,27 +1430,30 @@ def patient_test_sorting(request):
 
 
 
+from django.views.decorators.csrf import csrf_exempt
+from django.http import JsonResponse
+from django.core.mail import EmailMessage
+from django.conf import settings
+@csrf_exempt
 def send_email(request):
     try:
-        subject = request.data.get('subject', 'No Subject')
-        message = request.data.get('message', 'No Message')
-        # Use default recipient if none provided
-        recipient_list = request.data.get('recipients', ['parthibansmrft@gmail.com'])  # Default recipient
-        # Use default sender if none provided
-        from_email = request.data.get('from_email', settings.DEFAULT_FROM_EMAIL)  # Default sender
-        signature = 'Contact Us, \n Shanmuga Hospital, \n 24, Saradha College Road,\n Salem-636007 Tamil Nadu,\n \n 6369131631,0427 270 6666,\n info@shanmugahospital.com,\n https://shanmugahospital.com/'
+        subject = request.POST.get('subject', 'No Subject')
+        message = request.POST.get('message', 'No Message')
+        recipient_list = request.POST.getlist('recipients') or ['shanmugainnovations@gmail.com']
+        from_email = request.POST.get('from_email', settings.DEFAULT_FROM_EMAIL)
+        signature = (
+            "Contact Us,\nShanmuga Hospital,\n24, Saradha College Road,\n"
+            "Salem-636007 Tamil Nadu,\n\n6369131631, 0427 270 6666,\n"
+            "info@shanmugahospital.com,\nhttps://shanmugahospital.com/"
+        )
         files = request.FILES.getlist('attachments')
-        # Ensure recipient_list is a list
-        if isinstance(recipient_list, str):
-            recipient_list = [recipient_list]  # Convert string to list if only one email address is provided
-        # Ensure at least one recipient is provided
         if not recipient_list:
             return JsonResponse({'status': 'error', 'message': 'At least one recipient is required to send the email.'}, status=400)
         email = EmailMessage(
             subject=subject,
-            body=message+"\n\n"+signature,
-            from_email=from_email,  # Sender's email
-            to=recipient_list,      # List of recipients
+            body=message + "\n\n" + signature,
+            from_email=from_email,
+            to=recipient_list,
         )
         for file in files:
             email.attach(file.name, file.read(), file.content_type)
@@ -1553,3 +1538,30 @@ class ConsolidatedDataView(APIView):
         except Exception as e:
             return Response({"error": str(e)}, status=500)
 
+from .models import B2BPackage
+from .serializers import B2BPackageSerializer
+@api_view(['GET', 'POST', 'PATCH'])
+def test_package_view(request):
+    if request.method == 'GET':
+        packages = B2BPackage.objects.all()
+        serializer = B2BPackageSerializer(packages, many=True)
+        return Response(serializer.data)
+    elif request.method == 'POST':
+        serializer = B2BPackageSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    elif request.method == 'PATCH':
+        clinicalname = request.data.get('clinicalname')
+        if not clinicalname:
+            return Response({'error': 'clinicalName is required'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            package = B2BPackage.objects.get(clinicalname=clinicalname)
+        except B2BPackage.DoesNotExist:
+            return Response({'error': 'Package not found'}, status=status.HTTP_404_NOT_FOUND)
+        serializer = B2BPackageSerializer(package, data={'status': 'Approved'}, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

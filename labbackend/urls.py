@@ -120,5 +120,6 @@ urlpatterns = [
     path('send_approval_email/', views.send_approval_email, name='send_approval_email'),
     path('approve_test/', views.approve_test, name='approve_test'),
     path('clinicalname/update/', update_clinicalname, name='approve_test_by_index'),
+    path('b2b_packages/', views.test_package_view, name='test-packages'),
 
 ]

@@ -93,7 +93,7 @@ def get_clinicalname_invoice(request):
 
 # Function to get MongoDB collection
 def get_mongo_collection():
-    client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
+    client = MongoClient(os.getenv('LAB_DB_HOST'))
     db = client["Lab"]
     return db["labbackend_invoice"]
 

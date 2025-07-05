@@ -141,3 +141,16 @@ class SampleCollectorLocationSerializer(serializers.ModelSerializer):
     class Meta:
         model = SampleCollectorLocation
         fields = '__all__'
+
+
+from .models import B2BPackage
+class B2BPackageSerializer(serializers.ModelSerializer):
+    id = ObjectIdField(read_only=True)
+    class Meta:
+        model = B2BPackage
+        fields = '__all__'
+
+
+
+
+
