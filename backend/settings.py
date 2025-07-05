@@ -104,7 +104,10 @@ DATABASES = {
         'NAME': os.getenv("LAB_DB_NAME","Lab"),
         'ENFORCE_SCHEMA': False,
         'CLIENT': {
-            'host': os.getenv("LAB_DB_HOST"),
+
+            'host': os.getenv("GLOBAL_DB_HOST"),
+
+
         }
     }
 }
