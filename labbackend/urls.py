@@ -19,6 +19,7 @@ from labbackend.Views.samplestatus import get_received_samples ,get_sample_colle
 from labbackend.Views.logistic import save_logistic_data,get_logistic_data,getlogisticdatabydate,savesamplecollectordetails,update_sample_collector_details,getsalesmapping,logisticdashboard
 from labbackend.Views.refundandcancellation import search_cancellation,verify_and_process_refund,search_refund,verify_and_process_cancellation,generate_otp_cancellation,generate_otp_refund,logs_api,dashboard_data
 from labbackend.Views.clinicalname import clinical_name,get_last_referrer_code,get_clinicalname,ClinicalNameViewSet,preview_mou_file,update_clinicalname
+from labbackend.Views.devicedata import create_device_data
 
 
 urlpatterns = [
@@ -77,7 +78,7 @@ urlpatterns = [
     path('patient/get/<str:patient_id>/', get_patient_by_id, name='get_patient_by_id'),
     path('getlogisticdata/', getlogisticdatabydate, name='getlogisticdatabydate'),
     path('check-barcode/',check_barcode, name='check-barcode'),
-    # path('getsamplecollectordetails/', views.getsamplecollectordetails, name='getsamplecollectordetails'),
+    path('device-data/', create_device_data, name='create-device-data'),#Devicedata(machineintreface)
     path('savesamplecollector/', savesamplecollectordetails, name='savesamplecollectordetails'),
     path('updatesamplecollectordetails/', update_sample_collector_details, name='update_sample_collector_details'),
     path('patient/get/<str:patient_id>/', get_patient_by_id, name='get_patient_by_id'),

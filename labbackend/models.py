@@ -275,3 +275,23 @@ class SampleCollectorLocation(AuditModel):
         super().save(*args, **kwargs)
          
 
+from django.db import models
+
+class DeviceData(models.Model):
+    UID = models.IntegerField(primary_key=True)
+    DeviceID = models.CharField(max_length=255)  
+    patientname = models.CharField(max_length=100)
+    barcodeId = models.CharField(max_length=255)#sampleid
+    TestCode = models.CharField(max_length=255)
+    Value = models.CharField(max_length=255, null=True, blank=True)
+    ValueUOM = models.CharField(max_length=50, null=True, blank=True)
+    AbnormalFlag = models.CharField(max_length=10, null=True, blank=True)
+    ResultType = models.CharField(max_length=1, null=True, blank=True)
+    CreatedAt = models.DateTimeField()
+    IsProcessed = models.CharField(max_length=1, default='N')
+    ProcessedAt = models.DateTimeField(null=True, blank=True)
+    RawData = models.TextField(null=True, blank=True)
+    Client = models.CharField(max_length=255, null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.DeviceID} - {self.TestCode}"

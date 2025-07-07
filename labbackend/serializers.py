@@ -141,3 +141,12 @@ class SampleCollectorLocationSerializer(serializers.ModelSerializer):
     class Meta:
         model = SampleCollectorLocation
         fields = '__all__'
+
+
+
+from .models import DeviceData
+class DeviceDataSerializer(serializers.ModelSerializer):
+    id = ObjectIdField(read_only=True)
+    class Meta:
+        model = DeviceData
+        fields = '__all__'
