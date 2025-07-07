@@ -19,7 +19,7 @@ from labbackend.Views.samplestatus import get_received_samples ,get_sample_colle
 from labbackend.Views.logistic import save_logistic_data,get_logistic_data,getlogisticdatabydate,savesamplecollectordetails,update_sample_collector_details,getsalesmapping,logisticdashboard
 from labbackend.Views.refundandcancellation import search_cancellation,verify_and_process_refund,search_refund,verify_and_process_cancellation,generate_otp_cancellation,generate_otp_refund,logs_api,dashboard_data
 from labbackend.Views.clinicalname import clinical_name,get_last_referrer_code,get_clinicalname,ClinicalNameViewSet,preview_mou_file,update_clinicalname
-
+from labbackend.Views.devicedata import create_device_data
 
 urlpatterns = [
     path('registration/', registration, name='registration'),
@@ -121,5 +121,6 @@ urlpatterns = [
     path('approve_test/', views.approve_test, name='approve_test'),
     path('clinicalname/update/', update_clinicalname, name='approve_test_by_index'),
     path('b2b_packages/', views.test_package_view, name='test-packages'),
+    path('device-data/', create_device_data, name='create-device-data'),#Devicedata(machineintreface)
 
 ]

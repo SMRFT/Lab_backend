@@ -153,4 +153,9 @@ class B2BPackageSerializer(serializers.ModelSerializer):
 
 
 
-
+from .models import DeviceData
+class DeviceDataSerializer(serializers.ModelSerializer):
+    id = ObjectIdField(read_only=True)
+    class Meta:
+        model = DeviceData
+        fields = '__all__'
