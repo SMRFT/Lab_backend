@@ -1376,6 +1376,7 @@ def overall_report(request):
                 "refby": patient.get("refby", "N/A"),
                 "age": age,
                 "email": patient.get("email", "N/A"),
+                "phone": patient.get("phone", "N/A"),
                 "segment": patient.get("segment", "N/A"),
                 "b2b": patient.get("B2B", "N/A"),
                 "branch": patient.get("branch", "N/A"),
@@ -1565,6 +1566,43 @@ def test_package_view(request):
             return Response({'error': 'clinicalName is required'}, status=status.HTTP_400_BAD_REQUEST)
         try:
             package = B2BPackage.objects.get(clinicalname=clinicalname)
+        except B2BPackage.DoesNotExist:
+            return Response({'error': 'Package not found'}, status=status.HTTP_404_NOT_FOUND)
+        serializer = B2BPackageSerializer(package, data={'status': 'Approved'}, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+
+
+from .models import B2BPackage
+from .serializers import B2BPackageSerializer
+@api_view(['GET', 'POST', 'PATCH'])
+def test_package_view(request):
+    if request.method == 'GET':
+        packages = B2BPackage.objects.all()
+        serializer = B2BPackageSerializer(packages, many=True)
+        return Response(serializer.data)
+    elif request.method == 'POST':
+        serializer = B2BPackageSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    elif request.method == 'PATCH':
+        # Accept both packageName and clinicalname for flexibility
+        package_name = request.data.get('packageName')
+        clinical_name = request.data.get('clinicalname')
+        if not package_name and not clinical_name:
+            return Response({'error': 'packageName or clinicalname is required'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            if package_name:
+                # Try to find by packageName first
+                package = B2BPackage.objects.get(packageName=package_name)
+            else:
+                # Fall back to clinicalname
+                package = B2BPackage.objects.get(clinicalname=clinical_name)
         except B2BPackage.DoesNotExist:
             return Response({'error': 'Package not found'}, status=status.HTTP_404_NOT_FOUND)
         serializer = B2BPackageSerializer(package, data={'status': 'Approved'}, partial=True)
