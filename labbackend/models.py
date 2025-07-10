@@ -300,3 +300,16 @@ class DeviceData(models.Model):
 
     def __str__(self):
         return f"{self.DeviceID} - {self.TestCode}"
+    
+
+
+class B2BPackage(AuditModel):
+    packageName = models.CharField(max_length=255,primary_key=True)
+    clinicalname = models.CharField(max_length=255)
+    mrptotal = models.CharField(max_length=50)
+    l2ltotal = models.CharField(max_length=50)
+    rate = models.CharField(max_length=50)
+    testNames = models.JSONField()
+    status = models.CharField(max_length=50)
+    def __str__(self):
+        return self.packageName

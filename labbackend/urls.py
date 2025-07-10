@@ -94,7 +94,7 @@ urlpatterns = [
     path('search_cancellation/', search_cancellation, name='search_cancellation'),
     path("upload-pdf/", whatsapp.upload_pdf_to_gridfs, name="upload_pdf"),
     path("get-file/<str:file_id>/", whatsapp.get_pdf_from_gridfs, name="get_pdf"),
-    path("send-whatsapp/", whatsapp.send_whatsapp_message, name="send_whatsapp"),
+    path("send-whatsapp-template/", whatsapp.send_whatsapp_template, name="send_whatsapp"),
     path('get_patients/', get_patients, name='get_patients'),
     path('patient/update_billing/<str:patient_id>/', update_billing, name='update_billing'),
     path('patient/tests/<str:patient_id>/<str:date>/', get_patient_tests, name='get_patient_tests'),
@@ -122,5 +122,7 @@ urlpatterns = [
     path('clinicalname/update/', update_clinicalname, name='approve_test_by_index'),
     path('b2b_packages/', views.test_package_view, name='test-packages'),
     path('device-data/', create_device_data, name='create-device-data'),#Devicedata(machineintreface)
+    path('b2b_packages/', views.test_package_view, name='test-packages'),
+
 
 ]
