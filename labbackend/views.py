@@ -221,7 +221,7 @@ def send_approval_email(request):
                 recipient_list.append(recipient_email)
 
             # Always include default emails
-            default_emails = ['sivasundarismrft@gmail.com', 'parthibansmrft@gmail.com']
+            default_emails = ['drprabusankar@smrft.org', 'drpriya@smrft.org']
             for email in default_emails:
                 if email not in recipient_list:
                     recipient_list.append(email)
