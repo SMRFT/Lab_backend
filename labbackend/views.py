@@ -146,13 +146,8 @@ def send_approval_email(request):
             approval_url = f"{base_url}/approve_test/?test_name={test_name}"
             print(f"Generated approval URL: {approval_url}")
             # For local development, override the URL if needed
-            if '127.0.0.1' in base_url or 'localhost' in base_url:
-                base_url = 'http://127.0.0.1:1305'
-            else:
-                base_url = 'https://shinova.in1.cloudlets.co.in'
-
+            base_url = 'https://shinova.in1.cloudlets.co.in'
             approval_url = f"{base_url}/approve_test/?test_name={test_name}"
-
             # Format test details for email
             test_details_str = ""
             for key, value in test.items():
@@ -228,7 +223,7 @@ def send_approval_email(request):
                 recipient_list.append(recipient_email)
 
             # Always include default emails
-            default_emails = ['drprabusankar@smrft.org', 'drpriya@smrft.org']
+            default_emails = ['sivasundarismrft@gmail.com', 'parthibansmrft@gmail.com']
             for email in default_emails:
                 if email not in recipient_list:
                     recipient_list.append(email)
