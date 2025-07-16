@@ -142,12 +142,10 @@ def send_approval_email(request):
                 print(f"MongoDB connection error: {mongo_err}")
                 return JsonResponse({'error': f'Database error: {str(mongo_err)}'}, status=500)
             # Generate approval URL
-            base_url = request.build_absolute_uri('/').rstrip('/')
-            approval_url = f"{base_url}/approve_test/?test_name={test_name}"
-            print(f"Generated approval URL: {approval_url}")
+
             # For local development, override the URL if needed
-            base_url = 'https://shinova.in1.cloudlets.co.in'
-            approval_url = f"{base_url}/approve_test/?test_name={test_name}"
+            base_url = 'https://shinova.in1.cloudlets.co.in/'
+            approval_url = f"{base_url}_b_a_c_k_e_n_d/Diagnostics/approve_test/?test_name={test_name}"
             # Format test details for email
             test_details_str = ""
             for key, value in test.items():
