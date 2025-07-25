@@ -138,6 +138,7 @@ class TestValue(AuditModel):
     age = models.IntegerField()
     date = models.DateField()
     barcode= models.CharField(max_length=50)
+    locationId= models.CharField(max_length=50)
     testdetails = models.JSONField()  # Store all test details in JSON format   
     def save(self, *args, **kwargs):
         if not self._id:

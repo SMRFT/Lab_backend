@@ -6,7 +6,6 @@ from rest_framework.decorators import api_view
 from rest_framework import  status
 from urllib.parse import quote_plus
 from pymongo import MongoClient
-
 from rest_framework import status
 from django.views.decorators.csrf import csrf_exempt
 import logging
@@ -34,9 +33,13 @@ from .auth.permissions import SkipPermissionsIfDisabled
 from .models import Patient
 from .models import SampleStatus
 from .models import TestValue
-from .models import SampleStatus
 from .models import BarcodeTestDetails
-
+from django.http import JsonResponse
+from pymongo import MongoClient
+from datetime import datetime, timedelta
+import os, json, traceback
+from django.utils.timezone import make_aware
+from .models import SampleStatus, TestValue
 #Serializer
 from .serializers import SampleStatusSerializer
 from .serializers import TestValueSerializer
@@ -455,28 +458,38 @@ def get_test_parameters(request, test_name):
 @api_view(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])
 @permission_classes([HasRoleAndDataPermission])
 def compare_test_details(request):
-    # MongoDB connection setup
-    #password = quote_plus('Smrft@2024')
-        # MongoDB connection with TLS certificate
+    # MongoDB connection setup for Lab database
     client = MongoClient(os.getenv('LAB_DB_HOST'))
     db = client.Lab  # Database name
     collection = db.labbackend_testdetails  # Collection name
+    
+    # MongoDB connection setup for franchise database
+    franchise_mongo_url = "mongodb://admin:YSEgnm42789@103.205.141.245:27017/"
+    franchise_client = MongoClient(franchise_mongo_url)
+    franchise_db = franchise_client.franchise
+    franchise_collection = franchise_db.franchise_sample
+    
     # Retrieve the date and patient ID from the request
     date = request.GET.get('date')
     patient_id = request.GET.get('patient_id')
+    
     if not date or not patient_id:
         return JsonResponse({'error': 'Date and patient_id parameters are required'}, status=400)
+    
     try:
         # Validate the date format
         formatted_date = datetime.strptime(date, '%Y-%m-%d').strftime('%Y-%m-%d')
     except ValueError:
         return JsonResponse({'error': 'Invalid date format. Expected YYYY-MM-DD.'}, status=400)
-    # Query SampleStatus for patients with status 'Received' and matching patient_id
+    
+    test_data = []
+    
+    # Process Django SampleStatus records
     received_samples = SampleStatus.objects.filter(
         patient_id=patient_id,
         testdetails__isnull=False
     )
-    test_data = []
+    
     for sample in received_samples:
         try:
             # Check if testdetails is a string or list
@@ -485,31 +498,37 @@ def compare_test_details(request):
             elif isinstance(sample.testdetails, list):
                 test_list = sample.testdetails  # Already a list
             else:
-                return JsonResponse({'error': 'Invalid testdetails format'}, status=400)
+                continue  # Skip invalid format
         except json.JSONDecodeError:
-            return JsonResponse({'error': 'Invalid testdetails format'}, status=400)
+            continue  # Skip invalid JSON
+        
         for test_item in test_list:
             testname = test_item.get('testname')
             samplestatus = test_item.get('samplestatus')
+            
             # Only process if the sample status is 'Received'
             if samplestatus == "Received":
                 # Fetch test details directly from MongoDB Testdetails collection
                 test_details = collection.find({"test_name": testname})
+                
                 for test_detail in test_details:
                     # Extract parameters as JSON from the test detail
                     parameters_json = test_detail.get('parameters')
+                    
                     # Parse the parameters JSON string into a Python object if it exists
                     if parameters_json:
                         try:
                             parameters = json.loads(parameters_json)
                         except json.JSONDecodeError:
-                            return JsonResponse({'error': 'Invalid parameters JSON format'}, status=400)
+                            parameters = None
                     else:
-                        parameters = None  # Handle case where 'parameters' is missing or null
+                        parameters = None
+                    
                     # Assuming you want to compare with a specific parameter
                     requested_parameter = request.GET.get('parameter')
                     if requested_parameter and parameters and requested_parameter not in parameters:
                         continue  # Skip if the requested parameter is not found
+                    
                     test_info = {
                         "patient_id": sample.patient_id,
                         "patientname": sample.patientname,
@@ -520,10 +539,88 @@ def compare_test_details(request):
                         "reference_range": test_detail.get('reference_range'),
                         "status": samplestatus,
                         "barcode": sample.barcode,
-                        "method": test_detail.get('method', ''),  # Add method
-                        "department": test_detail.get('department', '')  # Add department
+                        "method": test_detail.get('method', ''),
+                        "department": test_detail.get('department', ''),
+                        "data_source": "django_model"  # Add source identifier
                     }
-                    test_data.append(test_info)  # Append each test detail to test_data
+                    test_data.append(test_info)
+    
+    # Process MongoDB franchise_samplecollection records
+    try:
+        # Query franchise collection for records with matching patient_id
+        franchise_samples = franchise_collection.find({
+            "patient_id": patient_id,
+            "testdetails": {"$exists": True, "$ne": None}
+        })
+        
+        for sample in franchise_samples:
+            try:
+                # Check if testdetails is a string or list
+                testdetails = sample.get('testdetails', [])
+                if isinstance(testdetails, str):
+                    test_list = json.loads(testdetails)  # Parse JSON string
+                elif isinstance(testdetails, list):
+                    test_list = testdetails  # Already a list
+                else:
+                    continue  # Skip invalid format
+            except json.JSONDecodeError:
+                continue  # Skip invalid JSON
+            
+            for test_item in test_list:
+                testname = test_item.get('testname')
+                samplestatus = test_item.get('samplestatus')
+                
+                # Only process if the sample status is 'Received'
+                if samplestatus == "Received":
+                    # Fetch test details from MongoDB Testdetails collection
+                    test_details = collection.find({"test_name": testname})
+                    
+                    for test_detail in test_details:
+                        # Extract parameters as JSON from the test detail
+                        parameters_json = test_detail.get('parameters')
+                        
+                        # Parse the parameters JSON string into a Python object if it exists
+                        if parameters_json:
+                            try:
+                                parameters = json.loads(parameters_json)
+                            except json.JSONDecodeError:
+                                parameters = None
+                        else:
+                            parameters = None
+                        
+                        # Check for requested parameter
+                        requested_parameter = request.GET.get('parameter')
+                        if requested_parameter and parameters and requested_parameter not in parameters:
+                            continue  # Skip if the requested parameter is not found
+                        
+                        test_info = {
+                            "patient_id": sample.get('patient_id'),
+                            "patientname": sample.get('patientname'),
+                            "testname": test_detail.get('test_name'),
+                            "parameters": parameters,
+                            "specimen_type": test_detail.get('specimen_type'),
+                            "unit": test_detail.get('unit'),
+                            "reference_range": test_detail.get('reference_range'),
+                            "status": samplestatus,
+                            "barcode": sample.get('barcode'),
+                            "method": test_detail.get('method', ''),
+                            "department": test_detail.get('department', ''),
+                            "data_source": "mongodb_franchise"  # Add source identifier
+                        }
+                        test_data.append(test_info)
+    
+    except Exception as franchise_error:
+        # If franchise MongoDB connection fails, continue with just Django data
+        print(f"Franchise MongoDB connection error: {str(franchise_error)}")
+    
+    finally:
+        # Close MongoDB connections
+        try:
+            client.close()
+            franchise_client.close()
+        except:
+            pass
+    
     # Return all collected test details in the response
     return JsonResponse({'data': test_data})
 
@@ -536,14 +633,19 @@ def get_samplestatus_testvalue(request):
         # Ensure the date is provided
         if not date_str:
             return Response({"error": "Date parameter is required."}, status=status.HTTP_400_BAD_REQUEST)
+        
         # Convert the date string to a datetime object
         selected_date = datetime.strptime(date_str, '%Y-%m-%d').date()
         # Get the start and end of the selected date range (to compare the datetime portion)
         start_of_day = datetime.combine(selected_date, datetime.min.time())
         end_of_day = start_of_day + timedelta(days=1)
-        # Get all records from the SampleStatus table for the selected date
+        
+        # Initialize combined results list
+        combined_results = []
+        
+        # Get data from SampleStatus model (existing logic)
         sample_statuses = SampleStatus.objects.filter(date__gte=start_of_day, date__lt=end_of_day)
-        filtered_sample_statuses = []
+        
         # Iterate through each record to filter the testdetails array
         for sample_status in sample_statuses:
             # Parse testdetails if it's a string
@@ -552,19 +654,119 @@ def get_samplestatus_testvalue(request):
             except json.JSONDecodeError:
                 # If testdetails cannot be parsed, skip this record
                 continue
+            
             # Filter tests with samplestatus 'Received' or 'Outsource'
             filtered_tests = [
                 test for test in testdetails
                 if test.get('samplestatus') in ['Received', 'Outsource']
             ]
+            
             if filtered_tests:
                 # If matching tests are found, add the whole record to the filtered list
                 sample_status_dict = sample_status.__dict__.copy()  # Make a copy of the sample_status dictionary
                 sample_status_dict['testdetails'] = filtered_tests
-                filtered_sample_statuses.append(sample_status_dict)
-        # Serialize the filtered data
-        serializer = SampleStatusSerializer(filtered_sample_statuses, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+                sample_status_dict['data_source'] = 'django_model'  # Add source identifier
+                combined_results.append(sample_status_dict)
+        
+        # Get data from MongoDB
+        try:       
+            
+            # Connect to MongoDB
+            client = MongoClient("mongodb://admin:YSEgnm42789@103.205.141.245:27017/")
+            db = client.franchise
+            sample_collection = db.franchise_sample
+            patient_collection = db.franchise_patient
+            
+            # Query MongoDB for records within the date range
+            # Assuming the MongoDB collection has a date field similar to your Django model
+            mongo_query = {
+                "created_date": {
+                    "$gte": start_of_day,
+                    "$lt": end_of_day
+                }
+            }
+            
+            # Fetch data from MongoDB
+            mongodb_records = list(sample_collection.find(mongo_query))
+            
+            # Extract all unique patient_ids from the sample records
+            patient_ids = set()
+            for record in mongodb_records:
+                if 'patient_id' in record and record['patient_id']:
+                    patient_ids.add(record['patient_id'])
+            
+            # Fetch patient data for all patient_ids in one query
+            patient_data = {}
+            if patient_ids:
+                patient_query = {"patient_id": {"$in": list(patient_ids)}}
+                patients = list(patient_collection.find(patient_query))
+                
+                # Create a dictionary for quick lookup
+                for patient in patients:
+                    patient_data[patient.get('patient_id')] = {
+                        'patientname': patient.get('patient_name', ''),
+                        'age': patient.get('age', ''),                        
+                    }
+            
+            # Process MongoDB records similar to Django model records
+            for record in mongodb_records:
+                # Convert ObjectId to string for JSON serialization
+                if '_id' in record:
+                    record['_id'] = str(record['_id'])
+                
+                # Add patient information if available
+                patient_id = record.get('patient_id')
+                if patient_id and patient_id in patient_data:
+                    record['patientname'] = patient_data[patient_id]['patientname']
+                    record['age'] = patient_data[patient_id]['age']                   
+                else:
+                    # Set default values if patient not found
+                    record['patient_name'] = ''
+                    record['age'] = ''
+                   
+                
+                # Check if the record has testdetails and apply similar filtering
+                if 'testdetails' in record:
+                    try:
+                        testdetails = record['testdetails'] if isinstance(record['testdetails'], list) else json.loads(record['testdetails'])
+                        
+                        # Filter tests with samplestatus 'Received' or 'Outsource'
+                        filtered_tests = [
+                            test for test in testdetails
+                            if test.get('samplestatus') in ['Received', 'Outsource']
+                        ]
+                        
+                        if filtered_tests:
+                            record_copy = record.copy()
+                            record_copy['testdetails'] = filtered_tests
+                            record_copy['data_source'] = 'mongodb'  # Add source identifier
+                            combined_results.append(record_copy)
+                    except (json.JSONDecodeError, TypeError):
+                        # If testdetails cannot be parsed, skip this record
+                        continue
+            
+            # Close MongoDB connection
+            client.close()
+            
+        except Exception as mongo_error:
+            # If MongoDB connection fails, continue with just Django model data
+            print(f"MongoDB connection error: {str(mongo_error)}")
+        
+        # Serialize the combined data (Django model records need serialization)
+        serialized_results = []
+        for item in combined_results:
+            if item.get('data_source') == 'django_model':
+                # Remove Django model internal fields that cause serialization issues
+                if '_state' in item:
+                    del item['_state']
+                # Convert datetime objects to strings for JSON serialization
+                for key, value in item.items():
+                    if isinstance(value, datetime):
+                        item[key] = value.isoformat()
+            serialized_results.append(item)
+        
+        return Response(serialized_results, status=status.HTTP_200_OK)
+        
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -595,18 +797,22 @@ def save_test_value(request):
     elif request.method == 'POST':
         payload = request.data
         try:
-            patient = Patient.objects.get(patient_id=payload['patient_id'])
+            patient_id = payload.get("patient_id")
+            patientname = payload.get("patientname")
+            age = payload.get("age")            
             test_details_json = payload.get("testdetails", [])
             barcode=payload.get("barcode")
+            locationId=payload.get("locationId")
             if not isinstance(test_details_json, list) or not test_details_json:
                 return Response({"error": "Invalid test details format"}, status=status.HTTP_400_BAD_REQUEST)
             test_value_record, created = TestValue.objects.get_or_create(
-                patient_id=patient.patient_id,
+                patient_id= patient_id,
                 date=payload.get('date'),
                 defaults={
-                    'patientname': patient.patientname,
-                    'age': patient.age,
+                    'patientname': patientname,
+                    'age': age,
                     "barcode": barcode,
+                    "locationId": locationId,
                     'testdetails': test_details_json,
                 }
             )
@@ -686,6 +892,7 @@ def save_test_value(request):
                     else:
                         # Update the value and other details for tests without parameters
                         existing_test["value"] = new_test.get("value", existing_test.get("value", ""))
+                        existing_test["remarks"] = new_test.get("remarks", existing_test.get("remarks", ""))
                         existing_test["unit"] = new_test.get("unit", existing_test.get("unit", "N/A"))
                         existing_test["reference_range"] = new_test.get("reference_range", existing_test.get("reference_range", "N/A"))
                         existing_test["specimen_type"] = new_test.get("specimen_type", existing_test.get("specimen_type", "N/A"))
@@ -1203,14 +1410,6 @@ def patient_test_status(request):
         print(traceback.format_exc())
         return JsonResponse({'error': str(e)}, status=500)
 
-
-
-from django.http import JsonResponse
-from pymongo import MongoClient
-from datetime import datetime, timedelta
-import os, json, traceback
-from django.utils.timezone import make_aware
-from .models import SampleStatus, TestValue
 
 @api_view(['GET','PATCH'])
 @csrf_exempt

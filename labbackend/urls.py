@@ -19,6 +19,7 @@ from labbackend.Views.samplestatus import get_received_samples ,get_sample_colle
 from labbackend.Views.logistic import save_logistic_data,get_logistic_data,getlogisticdatabydate,savesamplecollectordetails,update_sample_collector_details,getsalesmapping,logisticdashboard
 from labbackend.Views.refundandcancellation import search_cancellation,verify_and_process_refund,search_refund,verify_and_process_cancellation,generate_otp_cancellation,generate_otp_refund,logs_api,dashboard_data
 from labbackend.Views.clinicalname import clinical_name,get_last_referrer_code,get_clinicalname,ClinicalNameViewSet,preview_mou_file,update_clinicalname
+from labbackend.Views.franchise import get_franchise_sample, update_franchise_sample, get_batch_generation_data, update_batch_received_status,franchise_overall_report, franchise_patient_test_details,get_test_value_for_franchise
 
 
 urlpatterns = [
@@ -121,5 +122,14 @@ urlpatterns = [
     path('approve_test/', views.approve_test, name='approve_test'),
     path('clinicalname/update/', update_clinicalname, name='approve_test_by_index'),
     path('b2b_packages/', views.test_package_view, name='test-packages'),
+
+    path("get_franchise_Transferred/", get_franchise_sample, name="get_franchise_sample"),
+    path("update_franchise_sample/<str:patient_id>/", update_franchise_sample, name="update_franchise_sample"),
+    path('franchise-batches/', get_batch_generation_data, name='get_batch_generation_data'),
+    path('franchise-batches/<str:batch_no>/', update_batch_received_status, name='update_batch_received_status'),
+    path('franchise_overall_report/', franchise_overall_report, name='franchise_overall_report'),
+    path('franchise_patient_test_details/', franchise_patient_test_details, name='franchise_patient_test_details'),
+    path('get-test-values/', get_test_value_for_franchise, name='get_test_values_franchise'),
+
 
 ]
