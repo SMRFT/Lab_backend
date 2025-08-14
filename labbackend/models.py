@@ -284,20 +284,18 @@ class B2BPackage(AuditModel):
 
 class DeviceData(models.Model):
     UID = models.IntegerField(primary_key=True)
-    DeviceID = models.CharField(max_length=255)  
-    patientname = models.CharField(max_length=100)
-    barcodeId = models.CharField(max_length=255)#sampleid
-    TestCode = models.CharField(max_length=255)
-    Value = models.CharField(max_length=255, null=True, blank=True)
-    ValueUOM = models.CharField(max_length=50, null=True, blank=True)
-    AbnormalFlag = models.CharField(max_length=10, null=True, blank=True)
-    ResultType = models.CharField(max_length=1, null=True, blank=True)
-    CreatedAt = models.DateTimeField()
-    IsProcessed = models.CharField(max_length=1, default='N')
-    ProcessedAt = models.DateTimeField(null=True, blank=True)
+    DeviceID = models.CharField(max_length=20)
+    PatientID = models.CharField(max_length=10)
+    Barcode = models.CharField(max_length=10)
+    TestCode = models.CharField(max_length=10)
+    Value = models.CharField(max_length=255)
+    Unit = models.CharField(max_length=255)
+    Specimen = models.CharField(max_length=255)
+    ReferenceRange = models.CharField(max_length=255)
+    Received = models.BooleanField(default=False)
     RawData = models.TextField(null=True, blank=True)
-    Client = models.CharField(max_length=255, null=True, blank=True)
-
+    CreatedDate = models.DateTimeField()
+    Client = models.CharField(max_length=20, null=True, blank=True)
     def __str__(self):
         return f"{self.DeviceID} - {self.TestCode}"
     
@@ -312,4 +310,5 @@ class B2BPackage(AuditModel):
     testNames = models.JSONField()
     status = models.CharField(max_length=50)
     def __str__(self):
+
         return self.packageName
