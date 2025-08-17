@@ -195,63 +195,35 @@ def get_patient_details(request):
         return JsonResponse({'error': f'Error fetching patient details: {str(e)}'}, status=500)
     
 
+from django.utils.timezone import make_aware
 @api_view(['GET'])
-@permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
 def get_patients_by_date(request):
     start_date = request.GET.get('start_date')
     end_date = request.GET.get('end_date')
-
     if start_date and end_date:
         try:
-            # Convert string to datetime
-            start_date_parsed = datetime.strptime(start_date, '%Y-%m-%d')
-            end_date_parsed = datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1) - timedelta(seconds=1)  # Include the entire end date
-
-            # Adjust filter based on field type
+            # Convert to timezone-aware datetime
+            start_date_parsed = make_aware(datetime.strptime(start_date, '%Y-%m-%d'))
+            end_date_parsed = make_aware(datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1) - timedelta(seconds=1))
             patients = Patient.objects.filter(date__gte=start_date_parsed, date__lte=end_date_parsed)
-            
             patient_data = []
-            
             for patient in patients:
                 patient_dict = model_to_dict(patient)
-                
-                # Handle testname which could be a string or already a list
+                # Handle testname
                 tests = patient.testname
-                
-                # If tests is a string, parse it as JSON
                 if isinstance(tests, str):
                     try:
                         tests = json.loads(tests)
                     except json.JSONDecodeError:
-                        # Skip patients with invalid JSON in testname
                         continue
-                
-                # Filter out tests that are refunded or cancelled
-                valid_tests = []
-                for test in tests:
-                    # Check if refund or cancellation keys exist and are True
-                    if not test.get('refund', False) and not test.get('cancellation', False):
-                        valid_tests.append(test)
-                
-                # If no valid tests remain after filtering, skip this patient entirely
+                valid_tests = [t for t in tests if not t.get('refund', False) and not t.get('cancellation', False)]
                 if not valid_tests:
                     continue
-                
-                # Replace the testname with filtered valid tests
                 patient_dict['testname'] = valid_tests
-                
-                # Recalculate total amount based on valid tests only
-                total_amount = sum(float(test.get('amount', 0)) for test in valid_tests)
-                patient_dict['totalAmount'] = str(total_amount)
-                
                 patient_data.append(patient_dict)
-            
-            # Return the filtered patient data
-            return JsonResponse({'data': patient_data}, safe=False)
-            
+            return JsonResponse({'data': patient_data})  # Keep {data: []} format
         except ValueError:
             return JsonResponse({'error': 'Invalid date format. Use YYYY-MM-DD.'}, status=400)
-
     return JsonResponse({'error': 'Both start_date and end_date parameters are required.'}, status=400)
 
 
