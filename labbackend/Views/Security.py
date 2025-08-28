@@ -47,7 +47,7 @@ def registration(request):
 
         try:
             password = quote_plus('Smrft@2024')
-            client = MongoClient(os.getenv('LAB_DB_HOST'))
+            client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
             db = client.Lab
             collection = db['labbackend_register']
             
