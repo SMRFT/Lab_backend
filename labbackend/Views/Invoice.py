@@ -23,11 +23,21 @@ from rest_framework.permissions import AllowAny
 from pyauth.auth import HasRoleAndDataPermission
 from dotenv import load_dotenv
 import time
+from datetime import datetime, timedelta
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.response import Response
+from rest_framework import status
+from django.utils.dateparse import parse_date
+from django.views.decorators.csrf import csrf_exempt
+
 load_dotenv()
 def get_mongo_collection():
     client = MongoClient(os.getenv('GLOBAL_DB_HOST'))
     db = client["Lab"]
     return db["labbackend_invoice"]
+
+
+
 @api_view(['GET'])
 @csrf_exempt
 @permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
@@ -40,6 +50,7 @@ def get_all_patients(request):
 
     patients = Patient.objects.filter(segment=segment)
 
+    # Clinical name filter (only if valid credit clinical)
     if clinical_name:
         carry_credit_clinicals = ClinicalName.objects.filter(
             clinicalname=clinical_name,
@@ -50,12 +61,26 @@ def get_all_patients(request):
         else:
             patients = Patient.objects.none()
 
+    # Date range filter
     if from_date:
-        patients = patients.filter(date__gte=from_date)
+        try:
+            from_date_parsed = parse_date(from_date)
+            if from_date_parsed:
+                patients = patients.filter(date__gte=from_date_parsed)
+        except Exception:
+            pass
 
     if to_date:
-        patients = patients.filter(date__lte=to_date)
+        try:
+            to_date_parsed = parse_date(to_date)
+            if to_date_parsed:
+                # Add +1 day and use __lt so we include full "to_date"
+                next_day = to_date_parsed + timedelta(days=1)
+                patients = patients.filter(date__lt=next_day)
+        except Exception:
+            pass
 
+    # Credit amount filter
     if min_credit:
         try:
             min_credit_value = float(min_credit)
@@ -63,25 +88,26 @@ def get_all_patients(request):
         except ValueError:
             pass
 
-    # Get all patient IDs that are already included in generated invoices
+    # Exclude already invoiced patients
     collection = get_mongo_collection()
     invoices = list(collection.find({}, {"patients": 1}))
-    
+
     invoiced_patient_ids = set()
     for invoice in invoices:
         if 'patients' in invoice and invoice['patients']:
             for patient in invoice['patients']:
                 if 'patient_id' in patient:
                     invoiced_patient_ids.add(patient['patient_id'])
-    
-    # Exclude patients who are already in invoices
+
     if invoiced_patient_ids:
         patients = patients.exclude(patient_id__in=list(invoiced_patient_ids))
 
+    # Final ordering
     patients = patients.order_by('-date')
 
     serializer = PatientSerializer(patients, many=True)
     return Response(serializer.data, status=status.HTTP_200_OK)
+
 
 
 @api_view(['GET'])
