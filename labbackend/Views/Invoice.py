@@ -38,6 +38,13 @@ def get_mongo_collection():
 
 
 
+from datetime import timedelta
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.response import Response
+from rest_framework import status
+from django.utils.dateparse import parse_date
+from django.views.decorators.csrf import csrf_exempt
+
 @api_view(['GET'])
 @csrf_exempt
 @permission_classes([SkipPermissionsIfDisabled, HasRoleAndDataPermission])
@@ -63,22 +70,16 @@ def get_all_patients(request):
 
     # Date range filter
     if from_date:
-        try:
-            from_date_parsed = parse_date(from_date)
-            if from_date_parsed:
-                patients = patients.filter(date__gte=from_date_parsed)
-        except Exception:
-            pass
+        from_date_parsed = parse_date(from_date)
+        if from_date_parsed:
+            patients = patients.filter(date__gte=from_date_parsed)
 
     if to_date:
-        try:
-            to_date_parsed = parse_date(to_date)
-            if to_date_parsed:
-                # Add +1 day and use __lt so we include full "to_date"
-                next_day = to_date_parsed + timedelta(days=1)
-                patients = patients.filter(date__lt=next_day)
-        except Exception:
-            pass
+        to_date_parsed = parse_date(to_date)
+        if to_date_parsed:
+            # Add +1 day and use __lt so we include full "to_date"
+            next_day = to_date_parsed + timedelta(days=1)
+            patients = patients.filter(date__lt=next_day)
 
     # Credit amount filter
     if min_credit:
